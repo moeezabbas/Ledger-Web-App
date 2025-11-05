@@ -374,6 +374,31 @@
             font-size: 0.875rem;
         }
 
+        /* Amount Calculation */
+        .amount-calculation {
+            background: #f0f9ff;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 4px solid var(--primary);
+        }
+
+        .calculation-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .calculation-total {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            border-top: 2px solid var(--border);
+            padding-top: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
         /* Import Preview */
         .import-preview {
             background: var(--bg-light);
@@ -705,12 +730,15 @@
                                     <th>Date</th>
                                     <th>Customer</th>
                                     <th>Description</th>
+                                    <th>Item</th>
+                                    <th>Weight/Qty</th>
+                                    <th>Rate</th>
                                     <th>Amount</th>
                                     <th>DR/CR</th>
                                 </tr>
                             </thead>
                             <tbody id="recentTransactions">
-                                <tr><td colspan="6" style="text-align: center; padding: 2rem;">No transactions yet</td></tr>
+                                <tr><td colspan="9" style="text-align: center; padding: 2rem;">No transactions yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -743,7 +771,7 @@
                         <div class="form-grid">
                             <div class="form-group">
                                 <label>Item</label>
-                                <select class="form-control" name="item">
+                                <select class="form-control" name="item" id="itemSelect">
                                     <option value="">Select Item</option>
                                     <option>Chilled Gots</option>
                                     <option>Chilled Scrape</option>
@@ -761,11 +789,28 @@
                             </div>
                             <div class="form-group">
                                 <label>Weight/Qty</label>
-                                <input type="number" class="form-control" name="weightQty" step="0.01" placeholder="0.00">
+                                <input type="number" class="form-control" name="weightQty" step="0.01" placeholder="0.00" id="weightQtyInput">
                             </div>
                             <div class="form-group">
                                 <label>Rate (PKR)</label>
-                                <input type="number" class="form-control" name="rate" step="0.01" placeholder="0.00">
+                                <input type="number" class="form-control" name="rate" step="0.01" placeholder="0.00" id="rateInput">
+                            </div>
+                        </div>
+
+                        <!-- Amount Calculation Display -->
+                        <div class="amount-calculation" id="amountCalculation" style="display: none;">
+                            <h4>Amount Calculation</h4>
+                            <div class="calculation-row">
+                                <span>Weight/Qty:</span>
+                                <span id="calcWeight">0.00</span>
+                            </div>
+                            <div class="calculation-row">
+                                <span>Rate:</span>
+                                <span id="calcRate">Rs. 0.00</span>
+                            </div>
+                            <div class="calculation-row calculation-total">
+                                <span>Total Amount:</span>
+                                <span id="calcTotal">Rs. 0.00</span>
                             </div>
                         </div>
 
@@ -828,7 +873,7 @@
 
                         <div class="btn-group">
                             <button type="submit" class="btn btn-primary">✓ Submit Entry</button>
-                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('entryForm').reset()">Clear</button>
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('entryForm').reset(); app.hideAmountCalculation();">Clear</button>
                         </div>
                     </form>
                 </div>
@@ -904,24 +949,36 @@
                 <div class="form-container" style="margin-bottom: 2rem;">
                     <h3 style="margin-bottom: 1rem;">Connect to Google Sheets</h3>
                     <p style="color: var(--text-light); margin-bottom: 1.5rem;">
-                        Import ALL sheets (customer ledgers, transactions, balance sheet) from your Google Sheets workbook
+                        Import ALL customer ledger sheets with complete transaction history
                     </p>
 
                     <div style="background: var(--bg-light); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                        <h4 style="margin-bottom: 1rem;">📋 Setup Instructions:</h4>
-                        <ol style="line-height: 2; padding-left: 1.5rem;">
-                            <li>Open your Google Sheets ledger workbook</li>
-                            <li>Click <strong>File → Share → Publish to web</strong></li>
-                            <li>In "Link" tab, select <strong>"Entire Document"</strong></li>
-                            <li>Choose <strong>Web page</strong> format</li>
-                            <li>Click <strong>Publish</strong> and copy the published URL</li>
-                            <li>Paste the URL below</li>
-                        </ol>
-                        <div style="background: #e3f2fd; padding: 1rem; border-radius: 6px; margin-top: 1rem; border-left: 4px solid var(--primary);">
-                            <strong>💡 Important:</strong><br>
-                            Make sure your Google Sheet is properly formatted with clear column headers like:
-                            Date, Customer, Description, Debit, Credit, etc.
+                        <h4 style="margin-bottom: 1rem;">📋 Required Sheet Structure:</h4>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                                <thead>
+                                    <tr style="background: var(--primary); color: white;">
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">S.N</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Date</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Description</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Item</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Weight/Qty</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Rate (PKR)</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Transaction Type</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Payment Method</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Bank Name</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Cheque No.</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Debit (PKR)</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Credit (PKR)</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">Balance (PKR)</th>
+                                        <th style="padding: 0.5rem; border: 1px solid var(--border);">DR/CR</th>
+                                    </tr>
+                                </thead>
+                            </table>
                         </div>
+                        <p style="margin-top: 1rem; color: var(--text-light); font-size: 0.875rem;">
+                            <strong>Note:</strong> Your Google Sheet should have these exact column headers for proper import.
+                        </p>
                     </div>
 
                     <form id="googleSheetsForm">
@@ -965,35 +1022,20 @@
                     <div id="sheetsDiscovered" style="margin-top: 1rem;">
                         <!-- Sheets list will appear here -->
                     </div>
-                   <div class="btn-group" style="margin-top: 1rem;">
-    <button class="btn btn-success" onclick="manualSync()">🔄 Manual Sync Now</button>
-    <button class="btn btn-primary" onclick="viewSyncLog()">📋 View Sync Log</button>
-    <button class="btn btn-info" onclick="debugCurrentSheet()">🐛 Debug Sheet</button>
-    <button class="btn btn-danger" onclick="disconnectGoogleSheets()">Disconnect</button>
-</div>
+                    <div class="btn-group" style="margin-top: 1rem;">
+                        <button class="btn btn-success" onclick="manualSync()">🔄 Manual Sync Now</button>
+                        <button class="btn btn-primary" onclick="viewSyncLog()">📋 View Sync Log</button>
+                        <button class="btn btn-danger" onclick="disconnectGoogleSheets()">Disconnect</button>
+                    </div>
                 </div>
-function debugCurrentSheet() {
-    const sheetUrl = document.getElementById('sheetUrl').value;
-    if (!sheetUrl) {
-        app.showNotification('Please enter a Google Sheets URL first', 'error');
-        return;
-    }
-    
-    const spreadsheetId = app.extractSpreadsheetId(sheetUrl);
-    if (!spreadsheetId) {
-        app.showNotification('Invalid Google Sheets URL', 'error');
-        return;
-    }
-    
-    app.debugGoogleSheet(spreadsheetId);
-}
+
                 <div class="form-container" style="margin-top: 2rem;">
                     <h3 style="margin-bottom: 1rem;">💡 What Gets Imported</h3>
                     <div style="display: grid; gap: 1rem;">
                         <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; border-left: 4px solid var(--success);">
-                            <strong>✅ All Transaction Data:</strong>
+                            <strong>✅ Complete Transaction Data:</strong>
                             <p style="margin-top: 0.5rem; color: var(--text-light);">
-                                Date, Customer, Description, Item, Weight/Qty, Rate, Transaction Type, Payment Method, Bank Name, Cheque No., Debit, Credit
+                                S.N, Date, Description, Item, Weight/Qty, Rate, Transaction Type, Payment Method, Bank Name, Cheque No., Debit, Credit, Balance, DR/CR
                             </p>
                         </div>
                         <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; border-left: 4px solid var(--success);">
@@ -1012,12 +1054,12 @@ function debugCurrentSheet() {
                 </div>
 
                 <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--warning); margin-top: 2rem;">
-                    <strong>⚠️ Troubleshooting Tips</strong>
+                    <strong>⚠️ Important Notes</strong>
                     <ul style="line-height: 1.8; padding-left: 1.5rem; color: var(--text-dark); margin-top: 0.5rem;">
-                        <li>Make sure your Google Sheet is <strong>published to web</strong> (File → Share → Publish to web)</li>
-                        <li>Use the published URL, not the edit URL</li>
-                        <li>Ensure your sheet has proper column headers</li>
-                        <li>First row should contain column names</li>
+                        <li>Make sure your Google Sheet has the <strong>exact column headers</strong> as shown above</li>
+                        <li>Each sheet should represent one customer's ledger</li>
+                        <li>Sheet name will be used as customer name</li>
+                        <li>First row must contain column headers</li>
                         <li>Large sheets may take 30-60 seconds to import</li>
                     </ul>
                 </div>
@@ -1028,7 +1070,7 @@ function debugCurrentSheet() {
     <div class="modal-overlay" id="modalOverlay"></div>
 
     <script>
-        // Ledger Application with FIXED Google Sheets Integration
+        // Ledger Application with CORRECT Customer Structure
         class LedgerApp {
             constructor() {
                 this.data = {
@@ -1109,6 +1151,11 @@ function debugCurrentSheet() {
                     this.handleGoogleSheetsSubmit(e.target);
                 });
 
+                // Amount calculation listeners
+                document.getElementById('weightQtyInput').addEventListener('input', () => this.calculateAmount());
+                document.getElementById('rateInput').addEventListener('input', () => this.calculateAmount());
+                document.getElementById('itemSelect').addEventListener('change', () => this.calculateAmount());
+
                 // File import
                 const fileInput = document.getElementById('fileInput');
                 const dropZone = document.getElementById('dropZone');
@@ -1149,10 +1196,41 @@ function debugCurrentSheet() {
                 this.loadGoogleSheetsConfig();
             }
 
+            calculateAmount() {
+                const weightQty = parseFloat(document.getElementById('weightQtyInput').value) || 0;
+                const rate = parseFloat(document.getElementById('rateInput').value) || 0;
+                const amount = weightQty * rate;
+
+                if (weightQty > 0 && rate > 0) {
+                    document.getElementById('amountCalculation').style.display = 'block';
+                    document.getElementById('calcWeight').textContent = weightQty.toFixed(2);
+                    document.getElementById('calcRate').textContent = `Rs. ${rate.toFixed(2)}`;
+                    document.getElementById('calcTotal').textContent = `Rs. ${amount.toFixed(2)}`;
+                    
+                    // Auto-fill debit amount if not already set
+                    const debitInput = document.getElementById('debitInput');
+                    if (!debitInput.value) {
+                        debitInput.value = amount.toFixed(2);
+                    }
+                } else {
+                    this.hideAmountCalculation();
+                }
+            }
+
+            hideAmountCalculation() {
+                document.getElementById('amountCalculation').style.display = 'none';
+                document.getElementById('calcWeight').textContent = '0.00';
+                document.getElementById('calcRate').textContent = 'Rs. 0.00';
+                document.getElementById('calcTotal').textContent = 'Rs. 0.00';
+            }
+
             async handleEntrySubmit(form) {
                 const formData = new FormData(form);
                 const debit = parseFloat(formData.get('debit')) || 0;
                 const credit = parseFloat(formData.get('credit')) || 0;
+                const weightQty = parseFloat(formData.get('weightQty')) || 0;
+                const rate = parseFloat(formData.get('rate')) || 0;
+                const amount = weightQty * rate;
 
                 if (debit === 0 && credit === 0) {
                     this.showNotification('Please enter either Debit or Credit amount', 'error');
@@ -1165,8 +1243,9 @@ function debugCurrentSheet() {
                     customer: formData.get('customer'),
                     description: formData.get('description'),
                     item: formData.get('item'),
-                    weightQty: parseFloat(formData.get('weightQty')) || 0,
-                    rate: parseFloat(formData.get('rate')) || 0,
+                    weightQty: weightQty,
+                    rate: rate,
+                    amount: amount,
                     transactionType: formData.get('transactionType'),
                     paymentMethod: formData.get('paymentMethod'),
                     bankName: formData.get('bankName'),
@@ -1190,6 +1269,7 @@ function debugCurrentSheet() {
                 this.updateDashboard();
                 form.reset();
                 this.setDefaultDate();
+                this.hideAmountCalculation();
                 this.showNotification('Transaction added successfully!', 'success');
             }
 
@@ -1286,7 +1366,7 @@ function debugCurrentSheet() {
                     let importedCount = 0;
 
                     data.forEach(row => {
-                        // Map column names (case-insensitive)
+                        // Map column names (case-insensitive) - CORRECT STRUCTURE
                         const getCol = (names) => {
                             for (let name of names) {
                                 const key = Object.keys(row).find(k => 
@@ -1297,11 +1377,24 @@ function debugCurrentSheet() {
                             return '';
                         };
 
-                        const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account']);
+                        const sn = getCol(['SN', 'S.N', 'S.N.', 'Serial', 'No', 'Sr', 'Sr.', '#']);
                         const date = getCol(['Date', 'Transaction Date', 'Dated']);
+                        const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account']);
                         const description = getCol(['Description', 'Particulars', 'Details', 'Narration']);
-                        const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'DR', 'Dr Amount'])) || 0;
-                        const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'CR', 'Cr Amount'])) || 0;
+                        const item = getCol(['Item', 'Product', 'Goods']);
+                        const weightQty = parseFloat(getCol(['Weight/Qty', 'Quantity', 'Weight', 'Qty', 'Weight Qty'])) || 0;
+                        const rate = parseFloat(getCol(['Rate', 'Rate (PKR)', 'Rate(PKR)', 'Price', 'Unit Price', 'Rate PKR'])) || 0;
+                        const transactionType = getCol(['Transaction Type', 'Type', 'Trans Type', 'Transaction']);
+                        const paymentMethod = getCol(['Payment Method', 'Method', 'Mode', 'Payment']);
+                        const bankName = getCol(['Bank Name', 'Bank', 'Bank Account']);
+                        const chequeNo = getCol(['Cheque No', 'Cheque No.', 'Check No', 'Cheque Number', 'Cheque']);
+                        const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'Debit(PKR)', 'DR', 'Dr Amount', 'Debit Amount', 'Dr'])) || 0;
+                        const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'Credit(PKR)', 'CR', 'Cr Amount', 'Credit Amount', 'Cr'])) || 0;
+                        const balance = getCol(['Balance', 'Balance (PKR)', 'Running Balance']);
+                        const drCr = getCol(['DR/CR', 'DRCR', 'DR CR', 'Type', 'Dr/Cr']);
+
+                        // Calculate amount
+                        const amount = weightQty * rate;
 
                         if (!customerName || (!debit && !credit)) return;
 
@@ -1317,20 +1410,21 @@ function debugCurrentSheet() {
 
                         // Add transaction
                         const transaction = {
-                            sn: this.data.transactions.length + 1,
+                            sn: sn || (this.data.transactions.length + 1),
                             date: date || new Date().toISOString().split('T')[0],
                             customer: customerName,
                             description: description || 'Imported Transaction',
-                            item: getCol(['Item', 'Product', 'Goods']),
-                            weightQty: parseFloat(getCol(['Weight/Qty', 'Quantity', 'Weight', 'Qty'])) || 0,
-                            rate: parseFloat(getCol(['Rate', 'Rate (PKR)', 'Price', 'Unit Price'])) || 0,
-                            transactionType: getCol(['Transaction Type', 'Type', 'Trans Type']),
-                            paymentMethod: getCol(['Payment Method', 'Method', 'Mode']),
-                            bankName: getCol(['Bank Name', 'Bank']),
-                            chequeNo: getCol(['Cheque No', 'Cheque No.', 'Check No']),
+                            item: item,
+                            weightQty: weightQty,
+                            rate: rate,
+                            amount: amount,
+                            transactionType: transactionType,
+                            paymentMethod: paymentMethod,
+                            bankName: bankName,
+                            chequeNo: chequeNo,
                             debit: debit,
                             credit: credit,
-                            drCr: getCol(['DR/CR', 'DRCR', 'Type']) || (debit > 0 ? 'DR' : 'CR'),
+                            drCr: drCr || (debit > 0 ? 'DR' : 'CR'),
                             timestamp: new Date().toISOString()
                         };
 
@@ -1381,7 +1475,7 @@ function debugCurrentSheet() {
                 const recent = this.data.transactions.slice(-10).reverse();
 
                 if (recent.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No transactions yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem;">No transactions yet</td></tr>';
                     return;
                 }
 
@@ -1391,7 +1485,10 @@ function debugCurrentSheet() {
                         <td>${t.date}</td>
                         <td>${t.customer}</td>
                         <td>${t.description}</td>
-                        <td>Rs. ${(t.debit || t.credit).toFixed(2)}</td>
+                        <td>${t.item || '-'}</td>
+                        <td>${t.weightQty ? t.weightQty.toFixed(2) : '-'}</td>
+                        <td>${t.rate ? 'Rs. ' + t.rate.toFixed(2) : '-'}</td>
+                        <td>${t.amount ? 'Rs. ' + t.amount.toFixed(2) : 'Rs. ' + (t.debit || t.credit).toFixed(2)}</td>
                         <td><span class="${t.drCr === 'DR' ? 'dr-badge' : 'cr-badge'}">${t.drCr}</span></td>
                     </tr>
                 `).join('');
@@ -1452,6 +1549,9 @@ function debugCurrentSheet() {
                                     <th>Date</th>
                                     <th>Description</th>
                                     <th>Item</th>
+                                    <th>Weight/Qty</th>
+                                    <th>Rate</th>
+                                    <th>Amount</th>
                                     <th>Debit</th>
                                     <th>Credit</th>
                                     <th>Balance</th>
@@ -1462,12 +1562,16 @@ function debugCurrentSheet() {
                 let runningBalance = 0;
                 transactions.forEach(t => {
                     runningBalance += t.debit - t.credit;
+                    const amount = t.amount || (t.weightQty * t.rate) || (t.debit || t.credit);
                     html += `
                         <tr>
                             <td>${t.sn}</td>
                             <td>${t.date}</td>
                             <td>${t.description}</td>
                             <td>${t.item || '-'}</td>
+                            <td>${t.weightQty ? t.weightQty.toFixed(2) : '-'}</td>
+                            <td>${t.rate ? 'Rs. ' + t.rate.toFixed(2) : '-'}</td>
+                            <td>${amount ? 'Rs. ' + amount.toFixed(2) : '-'}</td>
                             <td>${t.debit ? 'Rs. ' + t.debit.toFixed(2) : '-'}</td>
                             <td>${t.credit ? 'Rs. ' + t.credit.toFixed(2) : '-'}</td>
                             <td>Rs. ${Math.abs(runningBalance).toFixed(2)} ${runningBalance >= 0 ? 'DR' : 'CR'}</td>
@@ -1521,7 +1625,7 @@ function debugCurrentSheet() {
                 }
             }
 
-            // FIXED GOOGLE SHEETS METHODS
+            // FIXED GOOGLE SHEETS IMPORT FOR CORRECT STRUCTURE
             async handleGoogleSheetsSubmit(form) {
                 const formData = new FormData(form);
                 const sheetUrl = formData.get('sheetUrl');
@@ -1585,311 +1689,198 @@ function debugCurrentSheet() {
             }
 
             async importFromGoogleSheets(spreadsheetId, mergeData = true) {
-    try {
-        this.showNotification('📥 Downloading data from Google Sheets...', 'warning');
+                try {
+                    this.showNotification('📥 Downloading data from Google Sheets...', 'warning');
 
-        // Use CORS proxy to avoid CORS issues
-        const proxyUrl = 'https://corsproxy.io/?';
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-        
-        const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
-        if (!response.ok) {
-            throw new Error(`Failed to download sheet: ${response.status} ${response.statusText}`);
-        }
-
-        const csvText = await response.text();
-        
-        if (!csvText || csvText.length < 10) {
-            throw new Error('Sheet appears to be empty or inaccessible');
-        }
-
-        // Parse CSV data
-        const data = this.parseCSV(csvText);
-        
-        if (data.length === 0) {
-            throw new Error('No data found in the sheet');
-        }
-
-        // Debug: Show what columns were found
-        console.log('Available columns:', Object.keys(data[0] || {}));
-        this.showNotification(`📊 Found ${data.length} rows with columns: ${Object.keys(data[0] || {}).join(', ')}`, 'warning');
-
-        // Clear existing data if not merging
-        if (!mergeData) {
-            this.data.transactions = [];
-            this.data.customers = [];
-        }
-
-        // Process the data
-        let importedTransactions = 0;
-        let importedCustomers = 0;
-        let skippedRows = 0;
-
-        data.forEach((row, index) => {
-            // Skip completely empty rows
-            if (Object.values(row).every(val => !val || val.toString().trim() === '')) {
-                skippedRows++;
-                return;
-            }
-
-            // Map columns (case-insensitive and flexible)
-            const getValue = (possibleNames) => {
-                for (const name of possibleNames) {
-                    const key = Object.keys(row).find(k => {
-                        const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-                        return cleanKey.includes(cleanName) || cleanName.includes(cleanKey);
-                    });
-                    if (key && row[key] !== undefined && row[key] !== '' && row[key] !== null) {
-                        const value = row[key];
-                        // Convert to string and clean
-                        return value.toString().trim();
+                    // Use CORS proxy to avoid CORS issues
+                    const proxyUrl = 'https://corsproxy.io/?';
+                    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+                    
+                    const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
+                    if (!response.ok) {
+                        throw new Error(`Failed to download sheet: ${response.status} ${response.statusText}`);
                     }
+
+                    const csvText = await response.text();
+                    
+                    if (!csvText || csvText.length < 10) {
+                        throw new Error('Sheet appears to be empty or inaccessible');
+                    }
+
+                    // Parse CSV data
+                    const data = this.parseCSV(csvText);
+                    
+                    if (data.length === 0) {
+                        throw new Error('No data found in the sheet');
+                    }
+
+                    // Debug: Show what columns were found
+                    console.log('Available columns:', Object.keys(data[0] || {}));
+                    const availableColumns = Object.keys(data[0] || {});
+                    this.showNotification(`📊 Found ${data.length} rows with columns: ${availableColumns.join(', ')}`, 'warning');
+
+                    // Clear existing data if not merging
+                    if (!mergeData) {
+                        this.data.transactions = [];
+                        this.data.customers = [];
+                    }
+
+                    // Process the data with CORRECT STRUCTURE
+                    let importedTransactions = 0;
+                    let importedCustomers = 0;
+                    let skippedRows = 0;
+
+                    data.forEach((row, index) => {
+                        // Skip completely empty rows
+                        if (Object.values(row).every(val => !val || val.toString().trim() === '')) {
+                            skippedRows++;
+                            return;
+                        }
+
+                        // Map columns (case-insensitive) - CORRECT STRUCTURE
+                        const getValue = (possibleNames) => {
+                            for (const name of possibleNames) {
+                                const key = Object.keys(row).find(k => {
+                                    const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                                    return cleanKey.includes(cleanName) || cleanName.includes(cleanKey);
+                                });
+                                if (key && row[key] !== undefined && row[key] !== '' && row[key] !== null) {
+                                    const value = row[key];
+                                    // Convert to string and clean
+                                    return value.toString().trim();
+                                }
+                            }
+                            return '';
+                        };
+
+                        // CORRECT COLUMN MAPPING FOR YOUR STRUCTURE
+                        const sn = getValue(['sn', 's.n', 's.n.', 'serial', 'no', 'sr', 'sr.', '#']);
+                        const date = getValue(['date', 'transaction date', 'dated']);
+                        const description = getValue(['description', 'particulars', 'narration', 'details']);
+                        const item = getValue(['item', 'product', 'goods']);
+                        const weightQty = parseFloat(getValue(['weight/qty', 'weightqty', 'weight', 'qty', 'quantity'])) || 0;
+                        const rate = parseFloat(getValue(['rate', 'rate (pkr)', 'rate(pkr)', 'price', 'unit price'])) || 0;
+                        const transactionType = getValue(['transaction type', 'transactiontype', 'type', 'trantype']);
+                        const paymentMethod = getValue(['payment method', 'paymentmethod', 'method', 'mode', 'payment']);
+                        const bankName = getValue(['bank name', 'bankname', 'bank']);
+                        const chequeNo = getValue(['cheque no', 'chequeno', 'cheque', 'check no', 'checkno']);
+                        const debit = parseFloat(getValue(['debit', 'debit (pkr)', 'debit(pkr)', 'dr'])) || 0;
+                        const credit = parseFloat(getValue(['credit', 'credit (pkr)', 'credit(pkr)', 'cr'])) || 0;
+                        const balance = getValue(['balance', 'balance (pkr)', 'balance(pkr)']);
+                        const drCr = getValue(['dr/cr', 'drcr', 'type']);
+
+                        // Calculate amount
+                        const amount = weightQty * rate;
+
+                        // Try to get customer name from sheet name or other columns
+                        let customerName = getValue(['customer', 'name', 'party name', 'account']);
+                        
+                        // If no customer column, use a default name
+                        if (!customerName) {
+                            customerName = `Customer_${importedCustomers + 1}`;
+                        }
+
+                        // Skip if this looks like a header row
+                        if (customerName.toLowerCase().includes('customer') || 
+                            customerName.toLowerCase().includes('name') ||
+                            customerName.toLowerCase().includes('date') ||
+                            customerName.toLowerCase().includes('debit') ||
+                            customerName.toLowerCase().includes('credit') ||
+                            customerName.toLowerCase().includes('description')) {
+                            skippedRows++;
+                            return;
+                        }
+
+                        // If both debit and credit are zero, skip
+                        if (debit === 0 && credit === 0) {
+                            skippedRows++;
+                            return;
+                        }
+
+                        // Clean customer name
+                        const cleanCustomerName = customerName.trim();
+
+                        // Add customer if doesn't exist
+                        let customer = this.data.customers.find(c => 
+                            c.name.toLowerCase() === cleanCustomerName.toLowerCase()
+                        );
+                        if (!customer) {
+                            customer = {
+                                name: cleanCustomerName,
+                                balance: 0,
+                                transactionCount: 0,
+                                created: new Date().toISOString()
+                            };
+                            this.data.customers.push(customer);
+                            importedCustomers++;
+                        }
+
+                        // Format date properly
+                        let formattedDate = date;
+                        if (date) {
+                            // Try to parse various date formats
+                            const dateObj = new Date(date);
+                            if (!isNaN(dateObj.getTime())) {
+                                formattedDate = dateObj.toISOString().split('T')[0];
+                            } else {
+                                // If date parsing fails, use today's date
+                                formattedDate = new Date().toISOString().split('T')[0];
+                            }
+                        } else {
+                            formattedDate = new Date().toISOString().split('T')[0];
+                        }
+
+                        // Create transaction with CORRECT STRUCTURE
+                        const transaction = {
+                            sn: sn || (this.data.transactions.length + 1),
+                            date: formattedDate,
+                            customer: cleanCustomerName,
+                            description: description || 'Transaction from Google Sheets',
+                            item: item,
+                            weightQty: weightQty,
+                            rate: rate,
+                            amount: amount,
+                            transactionType: transactionType,
+                            paymentMethod: paymentMethod,
+                            bankName: bankName,
+                            chequeNo: chequeNo,
+                            debit: debit,
+                            credit: credit,
+                            drCr: drCr || (debit > 0 ? 'DR' : 'CR'),
+                            timestamp: new Date().toISOString(),
+                            source: 'google-sheets'
+                        };
+
+                        this.data.transactions.push(transaction);
+                        
+                        // Update customer balance
+                        customer.balance += debit - credit;
+                        customer.transactionCount++;
+
+                        importedTransactions++;
+                    });
+
+                    console.log(`Import results: ${importedTransactions} transactions, ${importedCustomers} customers, ${skippedRows} rows skipped`);
+
+                    if (importedTransactions === 0) {
+                        // Provide detailed error information
+                        const sampleRow = data[0] || {};
+                        const availableColumns = Object.keys(sampleRow);
+                        throw new Error(`No valid transactions found. 
+                            Available columns: ${availableColumns.join(', ')}
+                            Please ensure your sheet has the correct column structure.`);
+                    }
+
+                    return {
+                        transactions: importedTransactions,
+                        customers: importedCustomers
+                    };
+
+                } catch (error) {
+                    console.error('Google Sheets import error:', error);
+                    throw new Error(`Failed to import from Google Sheets: ${error.message}`);
                 }
-                return '';
-            };
-
-            // Try multiple column name variations
-            const customerName = getValue([
-                'customer', 'name', 'party', 'account', 'customername', 
-                'partyname', 'accountname', 'client', 'clientname'
-            ]);
-            
-            const date = getValue([
-                'date', 'transactiondate', 'dated', 'transaction date',
-                'dateoftransaction', 'trandate'
-            ]);
-            
-            const description = getValue([
-                'description', 'particulars', 'narration', 'details',
-                'remark', 'remarks', 'note', 'notes'
-            ]);
-            
-            // Try multiple formats for debit/credit
-            let debit = 0;
-            let credit = 0;
-            
-            const debitValue = getValue([
-                'debit', 'dr', 'debitamount', 'debit amount', 'debitamt',
-                'dramount', 'dr amount', 'debitpkr', 'debit pkr'
-            ]);
-            
-            const creditValue = getValue([
-                'credit', 'cr', 'creditamount', 'credit amount', 'creditamt',
-                'cramount', 'cr amount', 'creditpkr', 'credit pkr'
-            ]);
-            
-            // Also check for single amount column with DR/CR indicator
-            const amountValue = getValue(['amount', 'amt', 'transactionamount', 'amountpkr']);
-            const drCrIndicator = getValue(['drcr', 'dr/cr', 'type', 'drcrtype', 'effect']).toUpperCase();
-
-            // Parse debit/credit values
-            if (debitValue) {
-                debit = parseFloat(debitValue.replace(/[^\d.-]/g, '')) || 0;
-            }
-            if (creditValue) {
-                credit = parseFloat(creditValue.replace(/[^\d.-]/g, '')) || 0;
-            }
-            
-            // Handle single amount column with DR/CR indicator
-            if (amountValue && !debitValue && !creditValue) {
-                const amount = parseFloat(amountValue.replace(/[^\d.-]/g, '')) || 0;
-                if (drCrIndicator.includes('DR') || drCrIndicator === 'D') {
-                    debit = Math.abs(amount);
-                } else if (drCrIndicator.includes('CR') || drCrIndicator === 'C') {
-                    credit = Math.abs(amount);
-                } else if (amount > 0) {
-                    // Assume positive is debit, negative is credit
-                    debit = Math.abs(amount);
-                } else if (amount < 0) {
-                    credit = Math.abs(amount);
-                }
-            }
-
-            const item = getValue(['item', 'product', 'goods', 'material', 'stock']);
-            const weightQty = parseFloat(getValue(['weight', 'qty', 'quantity', 'weightqty', 'weight/qty', 'qtyweight'])) || 0;
-            const rate = parseFloat(getValue(['rate', 'price', 'unitprice', 'ratepkr', 'pricepkr'])) || 0;
-            const transactionType = getValue(['type', 'transactiontype', 'transaction', 'trantype', 'transtype']);
-            const paymentMethod = getValue(['payment', 'method', 'paymentmethod', 'mode', 'paymode']);
-            const bankName = getValue(['bank', 'bankname', 'bank Name', 'bankname']);
-            const chequeNo = getValue(['cheque', 'chequeno', 'cheque no', 'checkno', 'check no', 'chqno']);
-
-            // Skip if no customer name or both amounts are zero
-            if (!customerName || customerName.trim() === '') {
-                skippedRows++;
-                return;
-            }
-
-            // Skip if this looks like a header row
-            if (customerName.toLowerCase().includes('customer') || 
-                customerName.toLowerCase().includes('name') ||
-                customerName.toLowerCase().includes('date') ||
-                customerName.toLowerCase().includes('debit') ||
-                customerName.toLowerCase().includes('credit')) {
-                skippedRows++;
-                return;
-            }
-
-            // If both debit and credit are zero, skip
-            if (debit === 0 && credit === 0) {
-                skippedRows++;
-                return;
-            }
-
-            // Clean customer name
-            const cleanCustomerName = customerName.trim();
-
-            // Add customer if doesn't exist
-            let customer = this.data.customers.find(c => 
-                c.name.toLowerCase() === cleanCustomerName.toLowerCase()
-            );
-            if (!customer) {
-                customer = {
-                    name: cleanCustomerName,
-                    balance: 0,
-                    transactionCount: 0,
-                    created: new Date().toISOString()
-                };
-                this.data.customers.push(customer);
-                importedCustomers++;
-            }
-
-            // Format date properly
-            let formattedDate = date;
-            if (date) {
-                // Try to parse various date formats
-                const dateObj = new Date(date);
-                if (!isNaN(dateObj.getTime())) {
-                    formattedDate = dateObj.toISOString().split('T')[0];
-                } else {
-                    // If date parsing fails, use today's date
-                    formattedDate = new Date().toISOString().split('T')[0];
-                }
-            } else {
-                formattedDate = new Date().toISOString().split('T')[0];
-            }
-
-            // Create transaction
-            const transaction = {
-                sn: this.data.transactions.length + 1,
-                date: formattedDate,
-                customer: cleanCustomerName,
-                description: description || 'Transaction from Google Sheets',
-                item: item,
-                weightQty: weightQty,
-                rate: rate,
-                transactionType: transactionType || (debit > 0 ? 'Sale' : 'Payment Received'),
-                paymentMethod: paymentMethod,
-                bankName: bankName,
-                chequeNo: chequeNo,
-                debit: debit,
-                credit: credit,
-                drCr: debit > 0 ? 'DR' : 'CR',
-                timestamp: new Date().toISOString(),
-                source: 'google-sheets'
-            };
-
-            this.data.transactions.push(transaction);
-            
-            // Update customer balance
-            customer.balance += debit - credit;
-            customer.transactionCount++;
-
-            importedTransactions++;
-        });
-
-        console.log(`Import results: ${importedTransactions} transactions, ${importedCustomers} customers, ${skippedRows} rows skipped`);
-
-        if (importedTransactions === 0) {
-            // Provide detailed error information
-            const sampleRow = data[0] || {};
-            const availableColumns = Object.keys(sampleRow);
-            throw new Error(`No valid transactions found. 
-                Available columns: ${availableColumns.join(', ')}
-                Sample row: ${JSON.stringify(sampleRow)}
-                Please ensure your sheet has columns for Customer and Amount/Debit/Credit.`);
-        }
-
-        return {
-            transactions: importedTransactions,
-            customers: importedCustomers
-        };
-
-    } catch (error) {
-        console.error('Google Sheets import error:', error);
-        throw new Error(`Failed to import from Google Sheets: ${error.message}`);
-    }
-}
-            async debugGoogleSheet(spreadsheetId) {
-    try {
-        const proxyUrl = 'https://corsproxy.io/?';
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-        
-        const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
-        const csvText = await response.text();
-        const data = this.parseCSV(csvText);
-        
-        console.log('=== GOOGLE SHEETS DEBUG INFO ===');
-        console.log('Total rows:', data.length);
-        console.log('Columns found:', Object.keys(data[0] || {}));
-        console.log('First 3 rows:', data.slice(0, 3));
-        
-        // Show modal with debug info
-        let debugHtml = `
-            <div class="modal-header">
-                <h3>🔍 Google Sheets Debug Info</h3>
-                <button class="close-btn" onclick="app.closeModal()">×</button>
-            </div>
-            <div style="max-height: 60vh; overflow-y: auto;">
-                <h4>Sheet Structure:</h4>
-                <p><strong>Total Rows:</strong> ${data.length}</p>
-                <p><strong>Columns Found:</strong> ${Object.keys(data[0] || {}).join(', ')}</p>
-                
-                <h4>Sample Data (First 3 rows):</h4>
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
-                        <thead>
-                            <tr style="background: var(--primary); color: white;">
-                                ${Object.keys(data[0] || {}).map(col => 
-                                    `<th style="padding: 0.5rem; border: 1px solid var(--border);">${col}</th>`
-                                ).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.slice(0, 3).map(row => `
-                                <tr>
-                                    ${Object.values(row).map(val => 
-                                        `<td style="padding: 0.5rem; border: 1px solid var(--border);">${val || ''}</td>`
-                                    ).join('')}
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <h4>Common Column Name Patterns:</h4>
-                <ul>
-                    <li><strong>Customer:</strong> customer, name, party, account</li>
-                    <li><strong>Date:</strong> date, transaction date, dated</li>
-                    <li><strong>Amount:</strong> debit, credit, amount, dr, cr</li>
-                    <li><strong>Description:</strong> description, particulars, narration</li>
-                </ul>
-            </div>
-        `;
-        
-        this.showModal(debugHtml);
-        
-    } catch (error) {
-        this.showNotification('Debug failed: ' + error.message, 'error');
-    }
-}
-
-            isHeaderRow(row) {
-                const values = Object.values(row).map(v => v.toString().toLowerCase());
-                const headerIndicators = ['date', 'customer', 'debit', 'credit', 'description', 'amount'];
-                return headerIndicators.some(header => 
-                    values.some(value => value.includes(header))
-                );
             }
 
             parseCSV(csvText) {
@@ -2138,14 +2129,14 @@ function debugCurrentSheet() {
                 }
                 
                 const csvText = await response.text();
-                const lines = csvText.split('\n').filter(line => line.trim() !== '');
+                const data = app.parseCSV(csvText);
                 
-                if (lines.length === 0) {
+                if (data.length === 0) {
                     throw new Error('Spreadsheet is empty');
                 }
 
-                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-                const sampleData = lines.slice(1, 4).map(line => line.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
+                const headers = Object.keys(data[0] || {});
+                const sampleData = data.slice(0, 3);
 
                 app.showModal(`
                     <div class="modal-header">
@@ -2155,11 +2146,11 @@ function debugCurrentSheet() {
                     <div>
                         <p style="margin-bottom: 1rem;"><strong>Google Sheets is accessible!</strong></p>
                         <div style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
-                            <p><strong>📊 Rows Found:</strong> ${lines.length - 1} data rows</p>
-                            <p><strong>📋 Columns Detected:</strong> ${headers.length} columns</p>
+                            <p><strong>📊 Rows Found:</strong> ${data.length} data rows</p>
+                            <p><strong>📋 Columns Detected:</strong> ${headers.join(', ')}</p>
                             <p><strong>🔍 Sample Data Preview:</strong></p>
                             <div style="overflow-x: auto; margin-top: 0.5rem;">
-                                <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
                                     <thead>
                                         <tr style="background: var(--primary); color: white;">
                                             ${headers.map(h => `<th style="padding: 0.5rem; border: 1px solid var(--border);">${h}</th>`).join('')}
@@ -2168,7 +2159,9 @@ function debugCurrentSheet() {
                                     <tbody>
                                         ${sampleData.map(row => `
                                             <tr>
-                                                ${row.map(cell => `<td style="padding: 0.5rem; border: 1px solid var(--border);">${cell}</td>`).join('')}
+                                                ${headers.map(header => 
+                                                    `<td style="padding: 0.5rem; border: 1px solid var(--border);">${row[header] || ''}</td>`
+                                                ).join('')}
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -2260,35 +2253,33 @@ function debugCurrentSheet() {
                     <ol>
                         <li><strong>Add Customers:</strong> Go to Customers section and add your customers with opening balance</li>
                         <li><strong>Submit Entry:</strong> Record transactions with complete details including items, rates, payment methods</li>
-                        <li><strong>Import Data:</strong> Upload Excel/CSV files with columns: S.N, Date, Description, Item, Weight/Qty, Rate, Transaction Type, Payment Method, Bank Name, Cheque No., Debit, Credit, DR/CR</li>
+                        <li><strong>Import Data:</strong> Upload Excel/CSV files with the correct column structure</li>
                         <li><strong>Google Sheets Sync:</strong> Connect your Google Sheets ledger for automatic data import</li>
                         <li><strong>View Ledgers:</strong> Click on any customer to view their complete ledger</li>
                         <li><strong>Export:</strong> Export individual ledgers or complete data</li>
                     </ol>
-                    <h4>Google Sheets Integration:</h4>
+                    <h4>Required Column Structure:</h4>
                     <ul>
-                        <li><strong>Step 1:</strong> Open your Google Sheets ledger</li>
-                        <li><strong>Step 2:</strong> Click File → Share → Publish to web</li>
-                        <li><strong>Step 3:</strong> Select "Entire Document"</li>
-                        <li><strong>Step 4:</strong> Choose "Web page" format</li>
-                        <li><strong>Step 5:</strong> Click Publish and copy the published URL</li>
-                        <li><strong>Step 6:</strong> Paste in Google Sheets Sync section</li>
+                        <li><strong>S.N</strong> - Serial Number</li>
+                        <li><strong>Date</strong> - Transaction Date</li>
+                        <li><strong>Description</strong> - Transaction details</li>
+                        <li><strong>Item</strong> - Product/Item name</li>
+                        <li><strong>Weight/Qty</strong> - Quantity or weight</li>
+                        <li><strong>Rate (PKR)</strong> - Price per unit</li>
+                        <li><strong>Transaction Type</strong> - Sale, Payment, etc.</li>
+                        <li><strong>Payment Method</strong> - Cash, Bank, etc.</li>
+                        <li><strong>Bank Name</strong> - Bank details</li>
+                        <li><strong>Cheque No.</strong> - Cheque number</li>
+                        <li><strong>Debit (PKR)</strong> - Debit amount</li>
+                        <li><strong>Credit (PKR)</strong> - Credit amount</li>
+                        <li><strong>Balance (PKR)</strong> - Running balance</li>
+                        <li><strong>DR/CR</strong> - Balance type</li>
                     </ul>
-                    <h4>Column Names Supported:</h4>
-                    <ul>
-                        <li><strong>Customer:</strong> Customer, Name, Party Name, Account, Customer Name</li>
-                        <li><strong>Date:</strong> Date, Transaction Date, Dated</li>
-                        <li><strong>Description:</strong> Description, Particulars, Details, Narration</li>
-                        <li><strong>Debit:</strong> Debit, Debit (PKR), DR, Dr Amount</li>
-                        <li><strong>Credit:</strong> Credit, Credit (PKR), CR, Cr Amount</li>
-                        <li><strong>Item:</strong> Item, Product, Goods</li>
-                        <li><strong>Weight/Qty:</strong> Weight/Qty, Quantity, Weight, Qty</li>
-                        <li><strong>Rate:</strong> Rate, Rate (PKR), Price, Unit Price</li>
-                        <li><strong>Bank:</strong> Bank Name, Bank</li>
-                        <li><strong>Cheque:</strong> Cheque No, Cheque No., Check No</li>
-                    </ul>
+                    <h4>Amount Calculation:</h4>
+                    <p>When you enter Weight/Qty and Rate, the system automatically calculates the total amount and suggests it as the Debit amount.</p>
                     <h4>Features:</h4>
                     <ul>
+                        <li>✓ Automatic amount calculation (Weight/Qty × Rate)</li>
                         <li>✓ Offline support - works without internet</li>
                         <li>✓ Auto-save every 30 seconds</li>
                         <li>✓ Google Sheets integration with auto-sync</li>
@@ -2308,4 +2299,3 @@ function debugCurrentSheet() {
     </script>
 </body>
 </html>
-
