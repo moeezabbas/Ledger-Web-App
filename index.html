@@ -912,25 +912,28 @@
                         <ol style="line-height: 2; padding-left: 1.5rem;">
                             <li>Open your Google Sheets ledger workbook</li>
                             <li>Click <strong>File → Share → Publish to web</strong></li>
-                            <li>In "Link" tab, select <strong>"Entire Document"</strong> (not just one sheet)</li>
-                            <li>Select <strong>"Web page"</strong> format (not CSV)</li>
-                            <li>Check <strong>"Automatically republish when changes are made"</strong></li>
-                            <li>Click <strong>Publish</strong> and copy the link</li>
-                            <li>Paste the link below</li>
+                            <li>In "Link" tab, select <strong>"Entire Document"</strong></li>
+                            <li>Choose <strong>ANY format</strong> (Web page or CSV - both work now!)</li>
+                            <li>Click <strong>Publish</strong></li>
+                            <li>Copy the <strong>Spreadsheet ID</strong> from your browser URL</li>
+                            <li>Paste the ID or full URL below</li>
                         </ol>
                         <div style="background: #e3f2fd; padding: 1rem; border-radius: 6px; margin-top: 1rem; border-left: 4px solid var(--primary);">
-                            <strong>💡 Pro Tip:</strong> The link should look like:<br>
-                            <code style="font-size: 0.875rem;">https://docs.google.com/spreadsheets/d/e/2PACX-1v...</code>
+                            <strong>💡 How to find Spreadsheet ID:</strong><br>
+                            Your Google Sheets URL looks like:<br>
+                            <code style="font-size: 0.875rem;">https://docs.google.com/spreadsheets/d/<span style="background: yellow; padding: 2px;">1abc...xyz</span>/edit</code><br>
+                            <small>Copy just the ID part (between /d/ and /edit) OR paste the entire URL</small>
                         </div>
                     </div>
 
                     <form id="googleSheetsForm">
                         <div class="form-group">
-                            <label>Google Sheets Published Link *</label>
-                            <input type="url" class="form-control" name="sheetUrl" id="sheetUrl" 
-                                   placeholder="https://docs.google.com/spreadsheets/d/e/2PACX-..." required>
+                            <label>Google Sheets URL or Spreadsheet ID *</label>
+                            <input type="text" class="form-control" name="sheetUrl" id="sheetUrl" 
+                                   placeholder="Paste full URL or just the spreadsheet ID" required>
                             <small style="color: var(--text-light); display: block; margin-top: 0.5rem;">
-                                Paste the published web page link (must be entire document, not CSV)
+                                Example: https://docs.google.com/spreadsheets/d/1abc...xyz/edit<br>
+                                Or just: 1abc...xyz
                             </small>
                         </div>
 
@@ -996,16 +999,18 @@
                     </div>
                 </div>
 
-                <div class="form-container" style="margin-top: 2rem; background: #fff3cd; border-left: 4px solid var(--warning);">
-                    <h4 style="margin-bottom: 0.5rem;">⚠️ Important Notes</h4>
-                    <ul style="line-height: 1.8; padding-left: 1.5rem; color: var(--text-dark);">
-                        <li>Must publish <strong>entire document</strong>, not individual sheets</li>
-                        <li>Use <strong>Web page</strong> format (not CSV) to get all sheets at once</li>
-                        <li>Enable "Automatically republish when changes are made" for live sync</li>
-                        <li>Each sheet tab name becomes the customer name</li>
-                        <li>First sync may take a few moments for large workbooks</li>
-                    </ul>
-                </div>
+                        <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--warning);">
+                            <strong>⚠️ Important Notes</h4>
+                            <ul style="line-height: 1.8; padding-left: 1.5rem; color: var(--text-dark);">
+                                <li><strong>Must publish to web:</strong> File → Share → Publish to web</li>
+                                <li><strong>Select "Entire Document"</strong> to sync all sheets</li>
+                                <li>Any format works (Web page or CSV)</li>
+                                <li>System will auto-discover all sheets (up to 20 sheets)</li>
+                                <li>Each sheet tab becomes a customer ledger</li>
+                                <li>First sync may take 30-60 seconds for large workbooks</li>
+                                <li><strong>Tip:</strong> Name your sheets after customers for better organization</li>
+                            </ul>
+                        </div>
             </div>
         </main>
     </div>
@@ -1565,72 +1570,107 @@
 
             extractSpreadsheetId(url) {
                 // Extract ID from various Google Sheets URL formats
+                // Handle both full URLs and just the ID
+                if (!url.includes('google.com')) {
+                    // Assume it's just the ID
+                    return url.trim();
+                }
+                
                 const patterns = [
                     /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/,
-                    /\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/
+                    /\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/,
+                    /\/d\/([a-zA-Z0-9-_]+)\//,
+                    /key=([a-zA-Z0-9-_]+)/
                 ];
                 
                 for (let pattern of patterns) {
                     const match = url.match(pattern);
                     if (match) return match[1];
                 }
+                
                 return null;
             }
 
             async fetchAllGoogleSheets(spreadsheetId) {
                 try {
-                    // Construct the URL to fetch as HTML to get all sheets
-                    const baseUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:html`;
+                    this.showNotification('📡 Fetching workbook data...', 'warning');
                     
-                    this.showNotification('📡 Fetching workbook structure...', 'warning');
+                    // Use the gviz API which is CORS-friendly
+                    // First, try to get the first sheet to verify access
+                    const testUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=0`;
                     
-                    // First, try to get the published HTML version
-                    const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${spreadsheetId}/pubhtml`;
-                    const response = await fetch(htmlUrl);
-                    
-                    if (!response.ok) {
-                        throw new Error('Cannot access sheet. Make sure it is published to web as "Web page" format.');
-                    }
-                    
-                    const htmlText = await response.text();
-                    
-                    // Parse sheet names from HTML
-                    const sheetNames = this.extractSheetNamesFromHTML(htmlText);
-                    
-                    if (sheetNames.length === 0) {
-                        throw new Error('No sheets found. Make sure the entire document is published.');
+                    try {
+                        const testResponse = await fetch(testUrl);
+                        if (!testResponse.ok) {
+                            throw new Error('Cannot access spreadsheet');
+                        }
+                    } catch (fetchError) {
+                        throw new Error('Cannot access Google Sheet. Make sure: 1) Sheet is published to web, 2) Published as "Web page" format, 3) Set to "Entire Document"');
                     }
 
-                    this.showNotification(`📋 Found ${sheetNames.length} sheets, importing data...`, 'warning');
-                    
-                    // Fetch data from each sheet
+                    // Try to fetch multiple sheets by gid (Google Sheet ID)
+                    // We'll try common gids and the ones that work
                     const allSheetsData = [];
-                    for (let sheetName of sheetNames) {
+                    const maxSheets = 20; // Try first 20 possible sheets
+                    
+                    this.showNotification('📋 Discovering sheets...', 'warning');
+                    
+                    for (let gid = 0; gid < maxSheets; gid++) {
                         try {
-                            // Construct CSV export URL for each sheet
-                            const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+                            const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
                             const csvResponse = await fetch(csvUrl);
                             
                             if (csvResponse.ok) {
                                 const csvText = await csvResponse.text();
-                                const data = this.parseCSV(csvText);
                                 
-                                if (data.length > 0) {
-                                    allSheetsData.push({
-                                        sheetName: sheetName,
-                                        data: data,
-                                        rowCount: data.length
-                                    });
-                                    this.showNotification(`✓ Imported: ${sheetName} (${data.length} rows)`, 'success');
+                                // Skip if empty or error response
+                                if (csvText && !csvText.includes('Error') && csvText.length > 10) {
+                                    const data = this.parseCSV(csvText);
+                                    
+                                    if (data.length > 0) {
+                                        // Try to extract sheet name from first cell or use default
+                                        let sheetName = `Sheet${gid + 1}`;
+                                        
+                                        // Look for customer name in various columns
+                                        const firstRow = data[0];
+                                        const possibleNames = Object.keys(firstRow).filter(key => 
+                                            key.toLowerCase().includes('name') || 
+                                            key.toLowerCase().includes('customer') ||
+                                            key.toLowerCase().includes('party')
+                                        );
+                                        
+                                        if (possibleNames.length > 0 && firstRow[possibleNames[0]]) {
+                                            // This might be the customer name
+                                            const potentialName = firstRow[possibleNames[0]];
+                                            if (potentialName && typeof potentialName === 'string' && potentialName.length < 50) {
+                                                sheetName = potentialName;
+                                            }
+                                        }
+                                        
+                                        allSheetsData.push({
+                                            sheetName: sheetName,
+                                            data: data,
+                                            rowCount: data.length,
+                                            gid: gid
+                                        });
+                                        
+                                        this.showNotification(`✓ Found: ${sheetName} (${data.length} rows)`, 'success');
+                                    }
                                 }
                             }
                         } catch (error) {
-                            console.error(`Error fetching sheet ${sheetName}:`, error);
-                            this.addToSyncLog(`❌ Failed to import sheet: ${sheetName}`);
+                            // Sheet doesn't exist at this gid, continue
+                            continue;
                         }
                     }
                     
+                    if (allSheetsData.length === 0) {
+                        throw new Error('No accessible sheets found. Make sure the document is published to web.');
+                    }
+                    
+                    this.showNotification(`✅ Successfully discovered ${allSheetsData.length} sheets!`, 'success');
                     return allSheetsData;
+                    
                 } catch (error) {
                     throw new Error('Failed to fetch sheets: ' + error.message);
                 }
@@ -1720,13 +1760,28 @@
                     return 'balance-sheet';
                 }
                 
+                // Check if this looks like a sheet number (Sheet1, Sheet2, etc.)
+                if (/^sheet\d+$/i.test(lowerName)) {
+                    // Try to determine from content
+                    if (data.length > 0) {
+                        const headers = Object.keys(data[0]).map(h => h.toLowerCase());
+                        
+                        // Has customer column - likely balance sheet
+                        if (headers.some(h => h.includes('customer') || h.includes('name') || h.includes('party')) &&
+                            !headers.some(h => h.includes('date'))) {
+                            return 'balance-sheet';
+                        }
+                    }
+                }
+                
                 // Check column headers to determine type
                 if (data.length > 0) {
                     const headers = Object.keys(data[0]).map(h => h.toLowerCase());
                     
-                    // Balance sheet usually has customer names and balances
+                    // Balance sheet usually has customer names and balances without dates
                     if (headers.some(h => h.includes('customer') || h.includes('name') || h.includes('party')) &&
-                        headers.some(h => h.includes('balance') || h.includes('amount'))) {
+                        headers.some(h => h.includes('balance') || h.includes('amount')) &&
+                        !headers.some(h => h.includes('date'))) {
                         return 'balance-sheet';
                     }
                     
@@ -2170,12 +2225,7 @@
             const sheetUrl = document.getElementById('sheetUrl').value;
             
             if (!sheetUrl) {
-                app.showNotification('Please enter a Google Sheets URL', 'error');
-                return;
-            }
-
-            if (!sheetUrl.includes('docs.google.com/spreadsheets')) {
-                app.showNotification('Invalid Google Sheets URL', 'error');
+                app.showNotification('Please enter a Google Sheets URL or ID', 'error');
                 return;
             }
 
@@ -2184,31 +2234,41 @@
             try {
                 const spreadsheetId = app.extractSpreadsheetId(sheetUrl);
                 if (!spreadsheetId) {
-                    throw new Error('Could not extract spreadsheet ID from URL');
+                    throw new Error('Could not extract spreadsheet ID. Please paste the full URL or just the ID.');
                 }
 
-                // Try to fetch the published HTML page
-                const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${spreadsheetId}/pubhtml`;
-                const response = await fetch(htmlUrl);
+                // Try to fetch first sheet
+                const testUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=0`;
+                const response = await fetch(testUrl);
                 
                 if (!response.ok) {
-                    throw new Error('Cannot access the sheet. Make sure it is published to web as "Web page" format.');
+                    throw new Error('Cannot access the spreadsheet');
                 }
                 
-                const htmlText = await response.text();
-                const sheetNames = app.extractSheetNamesFromHTML(htmlText);
+                const csvText = await response.text();
                 
-                if (sheetNames.length === 0) {
-                    // Try alternative method
-                    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
-                    const csvResponse = await fetch(csvUrl);
-                    
-                    if (csvResponse.ok) {
-                        sheetNames.push('Sheet1 (detected)');
-                    } else {
-                        throw new Error('No sheets found');
+                if (csvText.includes('Error') || csvText.length < 10) {
+                    throw new Error('Spreadsheet is not published or is empty');
+                }
+                
+                // Try to count sheets
+                let sheetCount = 0;
+                for (let gid = 0; gid < 20; gid++) {
+                    try {
+                        const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+                        const resp = await fetch(url);
+                        if (resp.ok) {
+                            const text = await resp.text();
+                            if (text && !text.includes('Error') && text.length > 10) {
+                                sheetCount++;
+                            }
+                        }
+                    } catch (e) {
+                        break;
                     }
                 }
+                
+                const lines = csvText.split('\n');
                 
                 app.showModal(`
                     <div class="modal-header">
@@ -2218,14 +2278,14 @@
                     <div>
                         <p style="margin-bottom: 1rem;"><strong>Google Sheets workbook is accessible!</strong></p>
                         <div style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
-                            <p><strong>📊 Found ${sheetNames.length} sheet(s):</strong></p>
-                            <ul style="margin-top: 0.5rem; padding-left: 1.5rem; max-height: 200px; overflow-y: auto;">
-                                ${sheetNames.map(name => `<li>${name}</li>`).join('')}
-                            </ul>
+                            <p><strong>📊 Spreadsheet ID:</strong> ${spreadsheetId}</p>
+                            <p><strong>📋 Estimated sheets:</strong> ${sheetCount}+ sheets found</p>
+                            <p><strong>📄 First sheet preview:</strong></p>
+                            <pre style="overflow-x: auto; padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.5rem; max-height: 150px; overflow-y: auto;">${lines.slice(0, 5).join('\n')}</pre>
                         </div>
                         <div style="background: #d1f2eb; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid var(--success);">
                             <strong>✓ Ready to import!</strong>
-                            <p style="margin-top: 0.5rem;">Each sheet will be imported as a customer ledger with all transactions.</p>
+                            <p style="margin-top: 0.5rem;">System will automatically discover and import all accessible sheets with their complete data.</p>
                         </div>
                     </div>
                 `);
@@ -2239,26 +2299,24 @@
                         <p style="color: var(--danger); margin-bottom: 1rem;"><strong>Cannot connect to Google Sheet</strong></p>
                         <p style="margin-bottom: 1rem;">Error: ${error.message}</p>
                         <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--warning);">
-                            <strong>⚠️ Make sure you follow these steps EXACTLY:</strong>
+                            <strong>⚠️ Quick Fix - Follow these steps:</strong>
                             <ol style="margin-top: 0.5rem; padding-left: 1.5rem; line-height: 2;">
                                 <li>Open your Google Sheets workbook</li>
                                 <li>Click <strong>File → Share → Publish to web</strong></li>
-                                <li>In the "Link" tab, select <strong>"Entire Document"</strong></li>
-                                <li>Choose <strong>"Web page"</strong> format (NOT CSV)</li>
-                                <li>Check "Automatically republish when changes are made"</li>
+                                <li>Select <strong>"Entire Document"</strong></li>
+                                <li>Choose any format (Web page or CSV)</li>
                                 <li>Click <strong>Publish</strong></li>
-                                <li>Copy the link that appears</li>
-                                <li>The link should start with: https://docs.google.com/spreadsheets/d/e/2PACX-...</li>
+                                <li>Copy your spreadsheet URL from browser address bar</li>
+                                <li>Paste it above (or just the ID part)</li>
                             </ol>
                         </div>
                         <div style="background: #e3f2fd; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid var(--primary);">
-                            <strong>💡 Common Issues:</strong>
+                            <strong>💡 Your URL should look like:</strong>
                             <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
-                                <li>Using sharing link instead of publish link ❌</li>
-                                <li>Publishing individual sheet instead of entire document ❌</li>
-                                <li>Using CSV format instead of Web page format ❌</li>
-                                <li>Sheet is private/not published ❌</li>
+                                <li>https://docs.google.com/spreadsheets/d/<strong style="color: var(--primary);">1abc...xyz</strong>/edit</li>
+                                <li>Or just paste: <strong style="color: var(--primary);">1abc...xyz</strong></li>
                             </ul>
+                            <p style="margin-top: 0.5rem;"><strong>The ID is between /d/ and /edit</strong></p>
                         </div>
                     </div>
                 `);
