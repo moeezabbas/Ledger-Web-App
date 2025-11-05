@@ -1023,10 +1023,11 @@
                         <!-- Sheets list will appear here -->
                     </div>
                     <div class="btn-group" style="margin-top: 1rem;">
-                        <button class="btn btn-success" onclick="manualSync()">🔄 Manual Sync Now</button>
-                        <button class="btn btn-primary" onclick="viewSyncLog()">📋 View Sync Log</button>
-                        <button class="btn btn-danger" onclick="disconnectGoogleSheets()">Disconnect</button>
-                    </div>
+    <button class="btn btn-success" onclick="manualSync()">🔄 Manual Sync Now</button>
+    <button class="btn btn-primary" onclick="viewSyncLog()">📋 View Sync Log</button>
+    <button class="btn btn-info" onclick="debugSheetStructure()">🔍 Debug Sheet Structure</button>
+    <button class="btn btn-danger" onclick="disconnectGoogleSheets()">Disconnect</button>
+</div>
                 </div>
 
                 <div class="form-container" style="margin-top: 2rem;">
@@ -1689,199 +1690,223 @@
             }
 
             async importFromGoogleSheets(spreadsheetId, mergeData = true) {
-                try {
-                    this.showNotification('📥 Downloading data from Google Sheets...', 'warning');
+    try {
+        this.showNotification('📥 Downloading data from Google Sheets...', 'warning');
 
-                    // Use CORS proxy to avoid CORS issues
-                    const proxyUrl = 'https://corsproxy.io/?';
-                    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-                    
-                    const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
-                    if (!response.ok) {
-                        throw new Error(`Failed to download sheet: ${response.status} ${response.statusText}`);
-                    }
+        // Use CORS proxy to avoid CORS issues
+        const proxyUrl = 'https://corsproxy.io/?';
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+        
+        const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
+        if (!response.ok) {
+            throw new Error(`Failed to download sheet: ${response.status} ${response.statusText}`);
+        }
 
-                    const csvText = await response.text();
-                    
-                    if (!csvText || csvText.length < 10) {
-                        throw new Error('Sheet appears to be empty or inaccessible');
-                    }
+        const csvText = await response.text();
+        
+        if (!csvText || csvText.length < 10) {
+            throw new Error('Sheet appears to be empty or inaccessible');
+        }
 
-                    // Parse CSV data
-                    const data = this.parseCSV(csvText);
-                    
-                    if (data.length === 0) {
-                        throw new Error('No data found in the sheet');
-                    }
+        // Parse CSV data
+        const data = this.parseCSV(csvText);
+        
+        if (data.length === 0) {
+            throw new Error('No data found in the sheet');
+        }
 
-                    // Debug: Show what columns were found
-                    console.log('Available columns:', Object.keys(data[0] || {}));
-                    const availableColumns = Object.keys(data[0] || {});
-                    this.showNotification(`📊 Found ${data.length} rows with columns: ${availableColumns.join(', ')}`, 'warning');
+        // Debug: Show what columns were found
+        console.log('Available columns:', Object.keys(data[0] || {}));
+        const availableColumns = Object.keys(data[0] || {});
+        this.showNotification(`📊 Found ${data.length} rows with columns: ${availableColumns.join(', ')}`, 'warning');
 
-                    // Clear existing data if not merging
-                    if (!mergeData) {
-                        this.data.transactions = [];
-                        this.data.customers = [];
-                    }
+        // Clear existing data if not merging
+        if (!mergeData) {
+            this.data.transactions = [];
+            this.data.customers = [];
+        }
 
-                    // Process the data with CORRECT STRUCTURE
-                    let importedTransactions = 0;
-                    let importedCustomers = 0;
-                    let skippedRows = 0;
+        // Process the data - FOCUS ON CUSTOMER TRANSACTION DATA ONLY
+        let importedTransactions = 0;
+        let importedCustomers = 0;
+        let skippedRows = 0;
 
-                    data.forEach((row, index) => {
-                        // Skip completely empty rows
-                        if (Object.values(row).every(val => !val || val.toString().trim() === '')) {
-                            skippedRows++;
-                            return;
-                        }
+        data.forEach((row, index) => {
+            // Skip completely empty rows
+            if (Object.values(row).every(val => !val || val.toString().trim() === '')) {
+                skippedRows++;
+                return;
+            }
 
-                        // Map columns (case-insensitive) - CORRECT STRUCTURE
-                        const getValue = (possibleNames) => {
-                            for (const name of possibleNames) {
-                                const key = Object.keys(row).find(k => {
-                                    const cleanKey = k.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-                                    return cleanKey.includes(cleanName) || cleanName.includes(cleanKey);
-                                });
-                                if (key && row[key] !== undefined && row[key] !== '' && row[key] !== null) {
-                                    const value = row[key];
-                                    // Convert to string and clean
-                                    return value.toString().trim();
-                                }
-                            }
-                            return '';
-                        };
-
-                        // CORRECT COLUMN MAPPING FOR YOUR STRUCTURE
-                        const sn = getValue(['sn', 's.n', 's.n.', 'serial', 'no', 'sr', 'sr.', '#']);
-                        const date = getValue(['date', 'transaction date', 'dated']);
-                        const description = getValue(['description', 'particulars', 'narration', 'details']);
-                        const item = getValue(['item', 'product', 'goods']);
-                        const weightQty = parseFloat(getValue(['weight/qty', 'weightqty', 'weight', 'qty', 'quantity'])) || 0;
-                        const rate = parseFloat(getValue(['rate', 'rate (pkr)', 'rate(pkr)', 'price', 'unit price'])) || 0;
-                        const transactionType = getValue(['transaction type', 'transactiontype', 'type', 'trantype']);
-                        const paymentMethod = getValue(['payment method', 'paymentmethod', 'method', 'mode', 'payment']);
-                        const bankName = getValue(['bank name', 'bankname', 'bank']);
-                        const chequeNo = getValue(['cheque no', 'chequeno', 'cheque', 'check no', 'checkno']);
-                        const debit = parseFloat(getValue(['debit', 'debit (pkr)', 'debit(pkr)', 'dr'])) || 0;
-                        const credit = parseFloat(getValue(['credit', 'credit (pkr)', 'credit(pkr)', 'cr'])) || 0;
-                        const balance = getValue(['balance', 'balance (pkr)', 'balance(pkr)']);
-                        const drCr = getValue(['dr/cr', 'drcr', 'type']);
-
-                        // Calculate amount
-                        const amount = weightQty * rate;
-
-                        // Try to get customer name from sheet name or other columns
-                        let customerName = getValue(['customer', 'name', 'party name', 'account']);
-                        
-                        // If no customer column, use a default name
-                        if (!customerName) {
-                            customerName = `Customer_${importedCustomers + 1}`;
-                        }
-
-                        // Skip if this looks like a header row
-                        if (customerName.toLowerCase().includes('customer') || 
-                            customerName.toLowerCase().includes('name') ||
-                            customerName.toLowerCase().includes('date') ||
-                            customerName.toLowerCase().includes('debit') ||
-                            customerName.toLowerCase().includes('credit') ||
-                            customerName.toLowerCase().includes('description')) {
-                            skippedRows++;
-                            return;
-                        }
-
-                        // If both debit and credit are zero, skip
-                        if (debit === 0 && credit === 0) {
-                            skippedRows++;
-                            return;
-                        }
-
-                        // Clean customer name
-                        const cleanCustomerName = customerName.trim();
-
-                        // Add customer if doesn't exist
-                        let customer = this.data.customers.find(c => 
-                            c.name.toLowerCase() === cleanCustomerName.toLowerCase()
-                        );
-                        if (!customer) {
-                            customer = {
-                                name: cleanCustomerName,
-                                balance: 0,
-                                transactionCount: 0,
-                                created: new Date().toISOString()
-                            };
-                            this.data.customers.push(customer);
-                            importedCustomers++;
-                        }
-
-                        // Format date properly
-                        let formattedDate = date;
-                        if (date) {
-                            // Try to parse various date formats
-                            const dateObj = new Date(date);
-                            if (!isNaN(dateObj.getTime())) {
-                                formattedDate = dateObj.toISOString().split('T')[0];
-                            } else {
-                                // If date parsing fails, use today's date
-                                formattedDate = new Date().toISOString().split('T')[0];
-                            }
-                        } else {
-                            formattedDate = new Date().toISOString().split('T')[0];
-                        }
-
-                        // Create transaction with CORRECT STRUCTURE
-                        const transaction = {
-                            sn: sn || (this.data.transactions.length + 1),
-                            date: formattedDate,
-                            customer: cleanCustomerName,
-                            description: description || 'Transaction from Google Sheets',
-                            item: item,
-                            weightQty: weightQty,
-                            rate: rate,
-                            amount: amount,
-                            transactionType: transactionType,
-                            paymentMethod: paymentMethod,
-                            bankName: bankName,
-                            chequeNo: chequeNo,
-                            debit: debit,
-                            credit: credit,
-                            drCr: drCr || (debit > 0 ? 'DR' : 'CR'),
-                            timestamp: new Date().toISOString(),
-                            source: 'google-sheets'
-                        };
-
-                        this.data.transactions.push(transaction);
-                        
-                        // Update customer balance
-                        customer.balance += debit - credit;
-                        customer.transactionCount++;
-
-                        importedTransactions++;
-                    });
-
-                    console.log(`Import results: ${importedTransactions} transactions, ${importedCustomers} customers, ${skippedRows} rows skipped`);
-
-                    if (importedTransactions === 0) {
-                        // Provide detailed error information
-                        const sampleRow = data[0] || {};
-                        const availableColumns = Object.keys(sampleRow);
-                        throw new Error(`No valid transactions found. 
-                            Available columns: ${availableColumns.join(', ')}
-                            Please ensure your sheet has the correct column structure.`);
-                    }
-
-                    return {
-                        transactions: importedTransactions,
-                        customers: importedCustomers
-                    };
-
-                } catch (error) {
-                    console.error('Google Sheets import error:', error);
-                    throw new Error(`Failed to import from Google Sheets: ${error.message}`);
+            // Skip header rows that don't contain actual transaction data
+            const firstValue = Object.values(row)[0];
+            if (firstValue && (
+                firstValue.toString().toLowerCase().includes('transaction data entry') ||
+                firstValue.toString().toLowerCase().includes('customer') ||
+                firstValue.toString().toLowerCase().includes('date') ||
+                firstValue.toString().toLowerCase().includes('debit') ||
+                firstValue.toString().toLowerCase().includes('credit') ||
+                firstValue.toString().toLowerCase().includes('description')
+            )) {
+                // Check if this is actually a header row by looking at multiple values
+                const values = Object.values(row).map(v => v.toString().toLowerCase());
+                const headerIndicators = ['customer', 'date', 'debit', 'credit', 'description', 'transaction'];
+                const headerCount = values.filter(val => 
+                    headerIndicators.some(header => val.includes(header))
+                ).length;
+                
+                if (headerCount >= 2) {
+                    skippedRows++;
+                    return;
                 }
             }
+
+            // SIMPLIFIED COLUMN MAPPING - Focus on essential transaction data
+            const getValue = (columnIndex, possibleNames = []) => {
+                const keys = Object.keys(row);
+                if (columnIndex < keys.length) {
+                    const key = keys[columnIndex];
+                    return row[key] ? row[key].toString().trim() : '';
+                }
+                return '';
+            };
+
+            // Map columns by position (more reliable)
+            // Assuming your structure: S.N, Date, Description, Item, Weight/Qty, Rate, Transaction Type, Payment Method, Bank Name, Cheque No., Debit, Credit, Balance, DR/CR
+            const sn = getValue(0, ['sn', 's.n', 'serial']);
+            const date = getValue(1, ['date', 'transaction date']);
+            const description = getValue(2, ['description', 'particulars']);
+            const item = getValue(3, ['item', 'product']);
+            const weightQty = parseFloat(getValue(4, ['weight/qty', 'quantity'])) || 0;
+            const rate = parseFloat(getValue(5, ['rate', 'price'])) || 0;
+            const transactionType = getValue(6, ['transaction type', 'type']);
+            const paymentMethod = getValue(7, ['payment method', 'method']);
+            const bankName = getValue(8, ['bank name', 'bank']);
+            const chequeNo = getValue(9, ['cheque no', 'cheque']);
+            const debit = parseFloat(getValue(10, ['debit', 'dr'])) || 0;
+            const credit = parseFloat(getValue(11, ['credit', 'cr'])) || 0;
+            const balance = getValue(12, ['balance']);
+            const drCr = getValue(13, ['dr/cr', 'drcr']);
+
+            // Calculate amount
+            const amount = weightQty * rate;
+
+            // Try to extract customer name from various sources
+            let customerName = '';
+            
+            // Method 1: Check if description contains customer name pattern
+            if (description) {
+                // Look for customer name in description (common pattern)
+                const customerMatch = description.match(/(?:to|from|with)\s+([A-Za-z\s]+?)(?:\s|$|,)/i);
+                if (customerMatch) {
+                    customerName = customerMatch[1].trim();
+                }
+            }
+            
+            // Method 2: Use sheet name or create generic customer
+            if (!customerName) {
+                customerName = `Customer_${importedCustomers + 1}`;
+            }
+
+            // Skip if both debit and credit are zero
+            if (debit === 0 && credit === 0) {
+                skippedRows++;
+                return;
+            }
+
+            // Skip if no valid data
+            if (!date && !description && debit === 0 && credit === 0) {
+                skippedRows++;
+                return;
+            }
+
+            // Clean customer name
+            const cleanCustomerName = customerName.trim();
+
+            // Add customer if doesn't exist
+            let customer = this.data.customers.find(c => 
+                c.name.toLowerCase() === cleanCustomerName.toLowerCase()
+            );
+            if (!customer) {
+                customer = {
+                    name: cleanCustomerName,
+                    balance: 0,
+                    transactionCount: 0,
+                    created: new Date().toISOString()
+                };
+                this.data.customers.push(customer);
+                importedCustomers++;
+            }
+
+            // Format date properly
+            let formattedDate = date;
+            if (date) {
+                const dateObj = new Date(date);
+                if (!isNaN(dateObj.getTime())) {
+                    formattedDate = dateObj.toISOString().split('T')[0];
+                } else {
+                    formattedDate = new Date().toISOString().split('T')[0];
+                }
+            } else {
+                formattedDate = new Date().toISOString().split('T')[0];
+            }
+
+            // Create transaction
+            const transaction = {
+                sn: sn || (this.data.transactions.length + 1),
+                date: formattedDate,
+                customer: cleanCustomerName,
+                description: description || 'Transaction from Google Sheets',
+                item: item,
+                weightQty: weightQty,
+                rate: rate,
+                amount: amount,
+                transactionType: transactionType,
+                paymentMethod: paymentMethod,
+                bankName: bankName,
+                chequeNo: chequeNo,
+                debit: debit,
+                credit: credit,
+                drCr: drCr || (debit > 0 ? 'DR' : 'CR'),
+                timestamp: new Date().toISOString(),
+                source: 'google-sheets'
+            };
+
+            this.data.transactions.push(transaction);
+            
+            // Update customer balance
+            customer.balance += debit - credit;
+            customer.transactionCount++;
+
+            importedTransactions++;
+        });
+
+        console.log(`Import results: ${importedTransactions} transactions, ${importedCustomers} customers, ${skippedRows} rows skipped`);
+
+        if (importedTransactions === 0) {
+            // Show detailed debug information
+            const sampleData = data.slice(0, 3);
+            let debugInfo = `First 3 rows:\n`;
+            sampleData.forEach((row, index) => {
+                debugInfo += `Row ${index + 1}: ${JSON.stringify(row)}\n`;
+            });
+            
+            throw new Error(`No valid transactions found after processing ${data.length} rows.\n
+Available columns: ${availableColumns.join(', ')}\n
+${debugInfo}\n
+Please ensure your sheet contains actual transaction data with Debit or Credit amounts.`);
+        }
+
+        return {
+            transactions: importedTransactions,
+            customers: importedCustomers
+        };
+
+    } catch (error) {
+        console.error('Google Sheets import error:', error);
+        throw new Error(`Failed to import from Google Sheets: ${error.message}`);
+    }
+}
 
             parseCSV(csvText) {
                 const lines = csvText.split('\n').filter(line => line.trim() !== '');
@@ -2003,7 +2028,80 @@
                 setTimeout(() => notif.remove(), 5000);
             }
         }
-
+async debugSheetStructure(spreadsheetId) {
+    try {
+        const proxyUrl = 'https://corsproxy.io/?';
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+        
+        const response = await fetch(proxyUrl + encodeURIComponent(csvUrl));
+        const csvText = await response.text();
+        const data = this.parseCSV(csvText);
+        
+        let debugHtml = `
+            <div class="modal-header">
+                <h3>🔍 Sheet Structure Analysis</h3>
+                <button class="close-btn" onclick="app.closeModal()">×</button>
+            </div>
+            <div style="max-height: 70vh; overflow-y: auto;">
+                <h4>Sheet Overview:</h4>
+                <p><strong>Total Rows:</strong> ${data.length}</p>
+                <p><strong>Columns Found:</strong> ${Object.keys(data[0] || {}).join(', ')}</p>
+                
+                <h4>First 5 Rows (Raw Data):</h4>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                        <thead>
+                            <tr style="background: var(--primary); color: white;">
+                                ${Object.keys(data[0] || {}).map((col, index) => 
+                                    `<th style="padding: 0.5rem; border: 1px solid var(--border);">Col ${index}<br>${col}</th>`
+                                ).join('')}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.slice(0, 5).map(row => `
+                                <tr>
+                                    ${Object.values(row).map(val => 
+                                        `<td style="padding: 0.5rem; border: 1px solid var(--border); max-width: 200px; overflow: hidden; text-overflow: ellipsis;">${val || ''}</td>`
+                                    ).join('')}
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h4>Column Mapping Guide:</h4>
+                <div style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
+                    <p><strong>Expected Structure:</strong></p>
+                    <ol style="line-height: 2;">
+                        <li><strong>Column 0:</strong> S.N (Serial Number)</li>
+                        <li><strong>Column 1:</strong> Date</li>
+                        <li><strong>Column 2:</strong> Description</li>
+                        <li><strong>Column 3:</strong> Item</li>
+                        <li><strong>Column 4:</strong> Weight/Qty</li>
+                        <li><strong>Column 5:</strong> Rate (PKR)</li>
+                        <li><strong>Column 6:</strong> Transaction Type</li>
+                        <li><strong>Column 7:</strong> Payment Method</li>
+                        <li><strong>Column 8:</strong> Bank Name</li>
+                        <li><strong>Column 9:</strong> Cheque No.</li>
+                        <li><strong>Column 10:</strong> Debit (PKR)</li>
+                        <li><strong>Column 11:</strong> Credit (PKR)</li>
+                        <li><strong>Column 12:</strong> Balance (PKR)</li>
+                        <li><strong>Column 13:</strong> DR/CR</li>
+                    </ol>
+                </div>
+                
+                <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                    <strong>💡 Tip:</strong> If your sheet has different column order, please rearrange your columns to match the expected structure above.
+                </div>
+            </div>
+        `;
+        
+        this.showModal(debugHtml);
+        
+    } catch (error) {
+        this.showNotification('Debug failed: ' + error.message, 'error');
+    }
+}
         // Global functions
         let app;
 
@@ -2014,7 +2112,21 @@
                 document.getElementById('mainNav').classList.remove('active');
             }
         }
-
+function debugSheetStructure() {
+    const sheetUrl = document.getElementById('sheetUrl').value;
+    if (!sheetUrl) {
+        app.showNotification('Please enter a Google Sheets URL first', 'error');
+        return;
+    }
+    
+    const spreadsheetId = app.extractSpreadsheetId(sheetUrl);
+    if (!spreadsheetId) {
+        app.showNotification('Invalid Google Sheets URL', 'error');
+        return;
+    }
+    
+    app.debugSheetStructure(spreadsheetId);
+}
         async function exportAllData() {
             const wb = XLSX.utils.book_new();
             
@@ -2299,3 +2411,4 @@
     </script>
 </body>
 </html>
+
