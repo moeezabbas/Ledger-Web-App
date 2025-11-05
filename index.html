@@ -1608,67 +1608,134 @@
                         throw new Error('Cannot access Google Sheet. Make sure: 1) Sheet is published to web, 2) Published as "Web page" format, 3) Set to "Entire Document"');
                     }
 
-                    // Try to fetch multiple sheets by gid (Google Sheet ID)
-                    // We'll try common gids and the ones that work
+                    // Fetch the actual sheet names using the export URL
                     const allSheetsData = [];
-                    const maxSheets = 20; // Try first 20 possible sheets
                     
-                    this.showNotification('📋 Discovering sheets...', 'warning');
+                    // Try to get sheet metadata by fetching the sheet list
+                    // We'll use multiple GIDs and try to extract real sheet names from the data
+                    this.showNotification('📋 Discovering sheets and extracting names...', 'warning');
                     
-                    for (let gid = 0; gid < maxSheets; gid++) {
+                    // Try different methods to get sheet names
+                    let sheetNames = [];
+                    
+                    // Method 1: Try to get sheet tabs from export feed
+                    try {
+                        const feedUrl = `https://spreadsheets.google.com/feeds/worksheets/${spreadsheetId}/public/full?alt=json`;
+                        const feedResponse = await fetch(feedUrl);
+                        if (feedResponse.ok) {
+                            const feedData = await feedResponse.json();
+                            if (feedData.feed && feedData.feed.entry) {
+                                sheetNames = feedData.feed.entry.map(entry => ({
+                                    name: entry.title.$t,
+                                    gid: entry.link.find(l => l.rel === 'http://schemas.google.com/spreadsheets/2006#cellsfeed')?.href.match(/gid=(\d+)/)?.[1] || '0'
+                                }));
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Feed method failed, trying alternative');
+                    }
+                    
+                    // Method 2: If feed didn't work, try export URLs and extract names from content
+                    if (sheetNames.length === 0) {
+                        this.showNotification('🔍 Using alternative method to detect sheets...', 'warning');
+                        
+                        for (let gid = 0; gid < 50; gid++) {
+                            try {
+                                const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+                                const csvResponse = await fetch(csvUrl);
+                                
+                                if (csvResponse.ok) {
+                                    const csvText = await csvResponse.text();
+                                    
+                                    // Skip if empty or error response
+                                    if (csvText && !csvText.includes('Error') && csvText.length > 10) {
+                                        // Try to extract sheet name from first row if it's a title
+                                        const lines = csvText.split('\n');
+                                        let sheetName = `Sheet_${gid}`;
+                                        
+                                        // Parse first few lines to find a potential sheet name
+                                        if (lines.length > 0) {
+                                            const firstLine = lines[0].replace(/"/g, '').trim();
+                                            // If first line looks like a title (single cell, no commas, reasonable length)
+                                            if (firstLine.length > 0 && firstLine.length < 100 && !firstLine.includes(',')) {
+                                                sheetName = firstLine;
+                                            }
+                                        }
+                                        
+                                        sheetNames.push({ name: sheetName, gid: gid.toString() });
+                                    }
+                                }
+                            } catch (error) {
+                                // No more sheets
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (sheetNames.length === 0) {
+                        throw new Error('No accessible sheets found. Make sure the document is published to web.');
+                    }
+                    
+                    this.showNotification(`✅ Found ${sheetNames.length} sheets, importing data...`, 'success');
+                    
+                    // Now fetch data for each discovered sheet
+                    for (let sheetInfo of sheetNames) {
                         try {
-                            const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
+                            const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${sheetInfo.gid}`;
                             const csvResponse = await fetch(csvUrl);
                             
                             if (csvResponse.ok) {
                                 const csvText = await csvResponse.text();
+                                const data = this.parseCSV(csvText);
                                 
-                                // Skip if empty or error response
-                                if (csvText && !csvText.includes('Error') && csvText.length > 10) {
-                                    const data = this.parseCSV(csvText);
+                                if (data.length > 0) {
+                                    // Clean the sheet name
+                                    let cleanName = sheetInfo.name.replace(/"/g, '').trim();
                                     
-                                    if (data.length > 0) {
-                                        // Try to extract sheet name from first cell or use default
-                                        let sheetName = `Sheet${gid + 1}`;
-                                        
-                                        // Look for customer name in various columns
+                                    // If name still looks generic, try to get it from data
+                                    if (/^sheet[_\s]*\d+$/i.test(cleanName)) {
+                                        // Look for a customer name in the data
                                         const firstRow = data[0];
-                                        const possibleNames = Object.keys(firstRow).filter(key => 
-                                            key.toLowerCase().includes('name') || 
-                                            key.toLowerCase().includes('customer') ||
-                                            key.toLowerCase().includes('party')
+                                        const possibleNameKeys = Object.keys(firstRow).filter(k => 
+                                            k.toLowerCase().includes('customer') || 
+                                            k.toLowerCase().includes('name') ||
+                                            k.toLowerCase().includes('party') ||
+                                            k.toLowerCase().includes('account')
                                         );
                                         
-                                        if (possibleNames.length > 0 && firstRow[possibleNames[0]]) {
-                                            // This might be the customer name
-                                            const potentialName = firstRow[possibleNames[0]];
-                                            if (potentialName && typeof potentialName === 'string' && potentialName.length < 50) {
-                                                sheetName = potentialName;
+                                        if (possibleNameKeys.length > 0 && firstRow[possibleNameKeys[0]]) {
+                                            const potentialName = firstRow[possibleNameKeys[0]].toString().trim();
+                                            if (potentialName && potentialName.length < 100 && potentialName.length > 0) {
+                                                // Check if this name appears in multiple rows (likely a header)
+                                                const nameCount = data.filter(row => row[possibleNameKeys[0]] === potentialName).length;
+                                                if (nameCount === 1 || nameCount === data.length) {
+                                                    // If it appears once or in all rows, it might be the customer name
+                                                    cleanName = potentialName;
+                                                }
                                             }
                                         }
-                                        
-                                        allSheetsData.push({
-                                            sheetName: sheetName,
-                                            data: data,
-                                            rowCount: data.length,
-                                            gid: gid
-                                        });
-                                        
-                                        this.showNotification(`✓ Found: ${sheetName} (${data.length} rows)`, 'success');
                                     }
+                                    
+                                    allSheetsData.push({
+                                        sheetName: cleanName,
+                                        data: data,
+                                        rowCount: data.length,
+                                        gid: sheetInfo.gid
+                                    });
+                                    
+                                    this.showNotification(`✓ Imported: ${cleanName} (${data.length} rows)`, 'success');
                                 }
                             }
                         } catch (error) {
-                            // Sheet doesn't exist at this gid, continue
-                            continue;
+                            console.error(`Error fetching sheet ${sheetInfo.name}:`, error);
                         }
                     }
                     
                     if (allSheetsData.length === 0) {
-                        throw new Error('No accessible sheets found. Make sure the document is published to web.');
+                        throw new Error('No data found in any sheets. Make sure your sheets contain data.');
                     }
                     
-                    this.showNotification(`✅ Successfully discovered ${allSheetsData.length} sheets!`, 'success');
+                    this.showNotification(`✅ Successfully imported ${allSheetsData.length} sheets!`, 'success');
                     return allSheetsData;
                     
                 } catch (error) {
@@ -1718,37 +1785,73 @@
                 let totalTransactions = 0;
                 const syncLog = [];
 
+                syncLog.push(`\n🔄 Starting import at ${new Date().toLocaleString()}`);
+                syncLog.push(`📊 Total sheets to process: ${allSheetsData.length}\n`);
+
                 for (let sheetInfo of allSheetsData) {
                     const { sheetName, data, rowCount } = sheetInfo;
+                    
+                    syncLog.push(`\n📄 Processing sheet: "${sheetName}" (${rowCount} rows)`);
                     
                     // Determine sheet type based on name and content
                     const sheetType = this.identifySheetType(sheetName, data);
                     
-                    syncLog.push(`📄 Processing: ${sheetName} (${sheetType})`);
+                    syncLog.push(`   Type detected: ${sheetType}`);
                     
                     if (sheetType === 'balance-sheet') {
                         const imported = this.importBalanceSheet(data);
                         totalCustomers += imported;
-                        syncLog.push(`  ✓ Imported ${imported} customers from balance sheet`);
+                        syncLog.push(`   ✓ Balance Sheet: Updated ${imported} customers`);
                     } else if (sheetType === 'customer-ledger') {
                         const { customer, transactions } = this.importCustomerLedger(sheetName, data);
-                        if (customer) {
+                        if (customer && transactions > 0) {
                             totalCustomers++;
                             totalTransactions += transactions;
-                            syncLog.push(`  ✓ ${sheetName}: ${transactions} transactions`);
+                            syncLog.push(`   ✓ Customer Ledger: "${customer}" - ${transactions} transactions imported`);
+                        } else {
+                            syncLog.push(`   ⚠ Skipped: No valid transaction data found`);
                         }
                     } else {
                         // Try to import as transactions
                         const imported = await this.importTransactionsFromSheet(data);
                         totalTransactions += imported;
                         if (imported > 0) {
-                            syncLog.push(`  ✓ Imported ${imported} transactions`);
+                            syncLog.push(`   ✓ Mixed transactions: ${imported} imported`);
+                        } else {
+                            syncLog.push(`   ⚠ No transactions found in this sheet`);
                         }
                     }
                 }
 
+                // Recalculate all customer balances from transactions
+                this.recalculateAllBalances();
+
+                syncLog.push(`\n✅ Import Complete!`);
+                syncLog.push(`📊 Summary:`);
+                syncLog.push(`   • Total customers: ${this.data.customers.length}`);
+                syncLog.push(`   • Total transactions: ${this.data.transactions.length}`);
+                syncLog.push(`   • New customers added: ${totalCustomers}`);
+                syncLog.push(`   • New transactions added: ${totalTransactions}`);
+                
                 this.data.googleSheetConfig.syncLog = syncLog;
-                this.addToSyncLog(`\n🎉 Sync Complete: ${totalCustomers} customers, ${totalTransactions} transactions`);
+                this.showNotification(`🎉 Import complete: ${this.data.customers.length} customers, ${this.data.transactions.length} transactions`, 'success');
+            }
+
+            recalculateAllBalances() {
+                // Recalculate balance for each customer based on their transactions
+                this.data.customers.forEach(customer => {
+                    const customerTransactions = this.data.transactions.filter(t => 
+                        t.customer.toLowerCase() === customer.name.toLowerCase()
+                    );
+                    
+                    let balance = 0;
+                    customerTransactions.forEach(t => {
+                        balance += t.debit - t.credit;
+                    });
+                    
+                    customer.balance = balance;
+                    customer.transactionCount = customerTransactions.length;
+                });
             }
 
             identifySheetType(sheetName, data) {
@@ -1797,11 +1900,27 @@
             }
 
             importCustomerLedger(customerName, data) {
-                // Clean customer name
-                const cleanName = customerName.replace(/_/g, ' ').trim();
+                // Clean customer name - remove quotes and special characters
+                const cleanName = customerName.replace(/['"_]/g, ' ').trim();
+                
+                // Skip if the name looks like a generic sheet name and data doesn't support it
+                if (/^sheet[_\s]*\d+$/i.test(cleanName)) {
+                    // This is a generic name, try to extract from data structure
+                    const headers = Object.keys(data[0] || {}).map(h => h.toLowerCase());
+                    
+                    // Check if this sheet has transaction structure (date, debit, credit)
+                    const hasTransactionStructure = headers.some(h => h.includes('date')) &&
+                                                   (headers.some(h => h.includes('debit')) || 
+                                                    headers.some(h => h.includes('credit')));
+                    
+                    if (!hasTransactionStructure) {
+                        // Might be a balance sheet or summary, skip customer ledger import
+                        return { customer: null, transactions: 0 };
+                    }
+                }
                 
                 // Find or create customer
-                let customer = this.data.customers.find(c => c.name === cleanName);
+                let customer = this.data.customers.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
                 if (!customer) {
                     customer = {
                         name: cleanName,
@@ -1815,49 +1934,67 @@
                 let transactionCount = 0;
                 let runningBalance = 0;
 
-                data.forEach(row => {
+                data.forEach((row, index) => {
                     const getCol = (names) => {
                         for (let name of names) {
                             const key = Object.keys(row).find(k => 
-                                k.toLowerCase().trim() === name.toLowerCase()
+                                k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === name.toLowerCase().replace(/[^a-z0-9]/g, '')
                             );
-                            if (key && row[key]) return row[key];
+                            if (key && row[key] !== undefined && row[key] !== null && row[key] !== '') {
+                                return row[key];
+                            }
                         }
                         return '';
                     };
 
-                    const date = getCol(['Date', 'Transaction Date', 'Dated']);
-                    const description = getCol(['Description', 'Particulars', 'Details', 'Narration']);
-                    const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'DR', 'Dr Amount', 'Debit Amount'])) || 0;
-                    const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'CR', 'Cr Amount', 'Credit Amount'])) || 0;
+                    // Get transaction data
+                    const sn = getCol(['SN', 'S.N', 'S.N.', 'Serial', 'No', 'Sr', 'Sr.', '#']);
+                    const date = getCol(['Date', 'Transaction Date', 'Dated', 'Date of Transaction']);
+                    const description = getCol(['Description', 'Particulars', 'Details', 'Narration', 'Remarks']);
+                    const item = getCol(['Item', 'Product', 'Goods', 'Article']);
+                    const weightQty = getCol(['Weight/Qty', 'Quantity', 'Weight', 'Qty', 'Weight Qty']);
+                    const rate = getCol(['Rate', 'Rate (PKR)', 'Rate(PKR)', 'Price', 'Unit Price', 'Rate PKR']);
+                    const transactionType = getCol(['Transaction Type', 'Type', 'Trans Type', 'Transaction']);
+                    const paymentMethod = getCol(['Payment Method', 'Method', 'Mode', 'Payment']);
+                    const bankName = getCol(['Bank Name', 'Bank', 'Bank Account']);
+                    const chequeNo = getCol(['Cheque No', 'Cheque No.', 'Check No', 'Cheque Number', 'Cheque']);
+                    const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'Debit(PKR)', 'DR', 'Dr Amount', 'Debit Amount', 'Dr'])) || 0;
+                    const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'Credit(PKR)', 'CR', 'Cr Amount', 'Credit Amount', 'Cr'])) || 0;
+                    const balance = getCol(['Balance', 'Balance (PKR)', 'Running Balance']);
+                    const drCr = getCol(['DR/CR', 'DRCR', 'DR CR', 'Type', 'Dr/Cr']);
 
-                    if (!date || (debit === 0 && credit === 0)) return;
+                    // Skip if no date and no amounts (likely header or empty row)
+                    if (!date && debit === 0 && credit === 0) return;
+                    
+                    // Skip if this looks like a header row
+                    if (date && date.toString().toLowerCase().includes('date')) return;
 
                     // Check if transaction already exists (avoid duplicates)
                     const exists = this.data.transactions.some(t => 
-                        t.customer === cleanName && 
+                        t.customer.toLowerCase() === cleanName.toLowerCase() && 
                         t.date === date && 
                         t.description === description &&
                         t.debit === debit &&
                         t.credit === credit
                     );
 
-                    if (!exists) {
+                    if (!exists && (debit > 0 || credit > 0)) {
                         const transaction = {
-                            sn: this.data.transactions.length + 1,
-                            date: date,
+                            sn: sn || (this.data.transactions.length + 1),
+                            date: date || new Date().toISOString().split('T')[0],
                             customer: cleanName,
                             description: description || 'Transaction',
-                            item: getCol(['Item', 'Product', 'Goods']),
-                            weightQty: parseFloat(getCol(['Weight/Qty', 'Quantity', 'Weight', 'Qty'])) || 0,
-                            rate: parseFloat(getCol(['Rate', 'Rate (PKR)', 'Price', 'Unit Price'])) || 0,
-                            transactionType: getCol(['Transaction Type', 'Type', 'Trans Type']),
-                            paymentMethod: getCol(['Payment Method', 'Method', 'Mode']),
-                            bankName: getCol(['Bank Name', 'Bank']),
-                            chequeNo: getCol(['Cheque No', 'Cheque No.', 'Check No', 'Cheque Number']),
+                            item: item || '',
+                            weightQty: parseFloat(weightQty) || 0,
+                            rate: parseFloat(rate) || 0,
+                            transactionType: transactionType || '',
+                            paymentMethod: paymentMethod || '',
+                            bankName: bankName || '',
+                            chequeNo: chequeNo || '',
                             debit: debit,
                             credit: credit,
-                            drCr: getCol(['DR/CR', 'DRCR', 'Type']) || (debit > 0 ? 'DR' : 'CR'),
+                            drCr: drCr || (debit > 0 ? 'DR' : 'CR'),
+                            balance: balance || '',
                             timestamp: new Date().toISOString()
                         };
 
@@ -1868,8 +2005,12 @@
                 });
 
                 // Update customer balance
-                customer.balance = runningBalance;
-                customer.transactionCount = transactionCount;
+                if (transactionCount > 0) {
+                    customer.balance = runningBalance;
+                    customer.transactionCount = transactionCount;
+                    
+                    this.addToSyncLog(`  ✓ ${cleanName}: Imported ${transactionCount} transactions, Balance: Rs. ${Math.abs(runningBalance).toFixed(2)} ${runningBalance >= 0 ? 'DR' : 'CR'}`);
+                }
 
                 return { customer: cleanName, transactions: transactionCount };
             }
@@ -1998,37 +2139,50 @@
                     const getCol = (names) => {
                         for (let name of names) {
                             const key = Object.keys(row).find(k => 
-                                k.toLowerCase().trim() === name.toLowerCase()
+                                k.toLowerCase().trim().replace(/[^a-z0-9]/g, '') === name.toLowerCase().replace(/[^a-z0-9]/g, '')
                             );
-                            if (key && row[key]) return row[key];
+                            if (key && row[key] !== undefined && row[key] !== null && row[key] !== '') {
+                                return row[key];
+                            }
                         }
                         return '';
                     };
 
-                    const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account']);
-                    const balance = parseFloat(getCol(['Balance', 'Amount', 'Balance (PKR)'])) || 0;
-                    const drCr = getCol(['DR/CR', 'DRCR', 'Type']) || (balance >= 0 ? 'DR' : 'CR');
+                    const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account', 'Customer Name', 'Party', 'Account Name']);
+                    const balance = parseFloat(getCol(['Balance', 'Amount', 'Balance (PKR)', 'Balance PKR', 'Opening Balance', 'Closing Balance'])) || 0;
+                    const drCr = getCol(['DR/CR', 'DRCR', 'Type', 'Dr/Cr', 'DR CR']) || (balance >= 0 ? 'DR' : 'CR');
 
                     if (!customerName) return;
+                    
+                    // Skip header rows
+                    if (customerName.toLowerCase().includes('customer') || 
+                        customerName.toLowerCase().includes('name') ||
+                        customerName.toLowerCase() === 'party') return;
 
-                    const customer = this.data.customers.find(c => c.name === customerName);
+                    const cleanName = customerName.replace(/['"]/g, '').trim();
+
+                    const customer = this.data.customers.find(c => c.name.toLowerCase() === cleanName.toLowerCase());
                     if (customer) {
-                        customer.balance = drCr === 'CR' ? -Math.abs(balance) : Math.abs(balance);
+                        // Update existing customer balance
+                        const actualBalance = drCr.toUpperCase().includes('CR') ? -Math.abs(balance) : Math.abs(balance);
+                        customer.balance = actualBalance;
                         updatedCount++;
+                        this.addToSyncLog(`  ✓ Updated balance for ${cleanName}: Rs. ${Math.abs(actualBalance).toFixed(2)} ${actualBalance >= 0 ? 'DR' : 'CR'}`);
                     } else {
+                        // Create new customer
+                        const actualBalance = drCr.toUpperCase().includes('CR') ? -Math.abs(balance) : Math.abs(balance);
                         this.data.customers.push({
-                            name: customerName,
-                            balance: drCr === 'CR' ? -Math.abs(balance) : Math.abs(balance),
+                            name: cleanName,
+                            balance: actualBalance,
                             transactionCount: 0,
                             created: new Date().toISOString()
                         });
                         updatedCount++;
+                        this.addToSyncLog(`  ✓ Added new customer ${cleanName}: Rs. ${Math.abs(actualBalance).toFixed(2)} ${actualBalance >= 0 ? 'DR' : 'CR'}`);
                     }
                 });
 
-                this.saveData();
-                this.updateDashboard();
-                this.showNotification(`Updated ${updatedCount} customer balances from Google Sheets`, 'success');
+                return updatedCount;
             }
 
             startGoogleSheetSync() {
