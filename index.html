@@ -904,38 +904,34 @@
                 <div class="form-container" style="margin-bottom: 2rem;">
                     <h3 style="margin-bottom: 1rem;">Connect to Google Sheets</h3>
                     <p style="color: var(--text-light); margin-bottom: 1.5rem;">
-                        Import customer data and transactions directly from your Google Sheets ledger
+                        Import ALL sheets (customer ledgers, transactions, balance sheet) from your Google Sheets workbook
                     </p>
 
                     <div style="background: var(--bg-light); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
                         <h4 style="margin-bottom: 1rem;">📋 Setup Instructions:</h4>
                         <ol style="line-height: 2; padding-left: 1.5rem;">
-                            <li>Open your Google Sheet ledger</li>
+                            <li>Open your Google Sheets ledger workbook</li>
                             <li>Click <strong>File → Share → Publish to web</strong></li>
-                            <li>Choose the sheet/tab you want to import</li>
-                            <li>Select <strong>"Comma-separated values (.csv)"</strong> format</li>
+                            <li>In "Link" tab, select <strong>"Entire Document"</strong> (not just one sheet)</li>
+                            <li>Select <strong>"Web page"</strong> format (not CSV)</li>
+                            <li>Check <strong>"Automatically republish when changes are made"</strong></li>
                             <li>Click <strong>Publish</strong> and copy the link</li>
                             <li>Paste the link below</li>
                         </ol>
+                        <div style="background: #e3f2fd; padding: 1rem; border-radius: 6px; margin-top: 1rem; border-left: 4px solid var(--primary);">
+                            <strong>💡 Pro Tip:</strong> The link should look like:<br>
+                            <code style="font-size: 0.875rem;">https://docs.google.com/spreadsheets/d/e/2PACX-1v...</code>
+                        </div>
                     </div>
 
                     <form id="googleSheetsForm">
                         <div class="form-group">
-                            <label>Google Sheets CSV Link *</label>
+                            <label>Google Sheets Published Link *</label>
                             <input type="url" class="form-control" name="sheetUrl" id="sheetUrl" 
                                    placeholder="https://docs.google.com/spreadsheets/d/e/2PACX-..." required>
                             <small style="color: var(--text-light); display: block; margin-top: 0.5rem;">
-                                Must be a published CSV link from Google Sheets
+                                Paste the published web page link (must be entire document, not CSV)
                             </small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Import Type</label>
-                            <select class="form-control" name="importType" id="importType">
-                                <option value="transactions">Import Transactions (All Columns)</option>
-                                <option value="customers">Import Customers Only</option>
-                                <option value="balance-sheet">Import Balance Sheet</option>
-                            </select>
                         </div>
 
                         <div class="form-group">
@@ -945,8 +941,15 @@
                             </label>
                         </div>
 
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" name="mergeData" id="mergeData" style="margin-right: 0.5rem;" checked>
+                                Merge with existing data (uncheck to replace all data)
+                            </label>
+                        </div>
+
                         <div class="btn-group">
-                            <button type="submit" class="btn btn-primary">🔗 Connect & Import</button>
+                            <button type="submit" class="btn btn-primary">🔗 Connect & Sync All Sheets</button>
                             <button type="button" class="btn btn-secondary" onclick="testGoogleSheetConnection()">
                                 🧪 Test Connection
                             </button>
@@ -959,29 +962,49 @@
                     <div id="syncDetails" style="padding: 1rem; background: var(--bg-light); border-radius: 8px;">
                         <!-- Sync details will appear here -->
                     </div>
+                    <div id="sheetsDiscovered" style="margin-top: 1rem;">
+                        <!-- Sheets list will appear here -->
+                    </div>
                     <div class="btn-group" style="margin-top: 1rem;">
                         <button class="btn btn-success" onclick="manualSync()">🔄 Manual Sync Now</button>
+                        <button class="btn btn-primary" onclick="viewSyncLog()">📋 View Sync Log</button>
                         <button class="btn btn-danger" onclick="disconnectGoogleSheets()">Disconnect</button>
                     </div>
                 </div>
 
                 <div class="form-container" style="margin-top: 2rem;">
-                    <h3 style="margin-bottom: 1rem;">💡 Tips for Best Results</h3>
-                    <ul style="line-height: 2; padding-left: 1.5rem; color: var(--text-light);">
-                        <li><strong>Column Headers:</strong> Use standard names like "Date", "Customer", "Description", "Debit", "Credit", "DR/CR"</li>
-                        <li><strong>Date Format:</strong> Use DD/MM/YYYY or YYYY-MM-DD for consistent imports</li>
-                        <li><strong>Multiple Sheets:</strong> Publish each sheet separately and import one at a time</li>
-                        <li><strong>Customer Sheets:</strong> Each customer ledger sheet can be imported individually</li>
-                        <li><strong>Updates:</strong> Re-import to update data, or enable auto-sync for automatic updates</li>
-                    </ul>
+                    <h3 style="margin-bottom: 1rem;">💡 What Gets Imported</h3>
+                    <div style="display: grid; gap: 1rem;">
+                        <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; border-left: 4px solid var(--success);">
+                            <strong>✅ Customer Ledger Sheets:</strong>
+                            <p style="margin-top: 0.5rem; color: var(--text-light);">
+                                Each sheet named after a customer will be imported as that customer's complete transaction history
+                            </p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; border-left: 4px solid var(--success);">
+                            <strong>✅ Balance Sheet:</strong>
+                            <p style="margin-top: 0.5rem; color: var(--text-light);">
+                                Sheet named "Balance Sheet", "Summary", or "Customers" with customer balances
+                            </p>
+                        </div>
+                        <div style="padding: 1rem; background: var(--bg-light); border-radius: 8px; border-left: 4px solid var(--success);">
+                            <strong>✅ All Columns:</strong>
+                            <p style="margin-top: 0.5rem; color: var(--text-light);">
+                                S.N, Date, Description, Item, Weight/Qty, Rate, Transaction Type, Payment Method, Bank Name, Cheque No., Debit, Credit, Balance, DR/CR
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-container" style="margin-top: 2rem; background: #fff3cd; border-left: 4px solid var(--warning);">
-                    <h4 style="margin-bottom: 0.5rem;">🔒 Privacy & Security</h4>
-                    <p style="color: var(--text-dark); line-height: 1.8;">
-                        Your Google Sheets link is only used to fetch data. We don't store your link or access any other Google data. 
-                        The connection is read-only and direct from your browser to Google's servers.
-                    </p>
+                    <h4 style="margin-bottom: 0.5rem;">⚠️ Important Notes</h4>
+                    <ul style="line-height: 1.8; padding-left: 1.5rem; color: var(--text-dark);">
+                        <li>Must publish <strong>entire document</strong>, not individual sheets</li>
+                        <li>Use <strong>Web page</strong> format (not CSV) to get all sheets at once</li>
+                        <li>Enable "Automatically republish when changes are made" for live sync</li>
+                        <li>Each sheet tab name becomes the customer name</li>
+                        <li>First sync may take a few moments for large workbooks</li>
+                    </ul>
                 </div>
             </div>
         </main>
@@ -1475,60 +1498,417 @@
             async handleGoogleSheetsSubmit(form) {
                 const formData = new FormData(form);
                 const sheetUrl = formData.get('sheetUrl');
-                const importType = formData.get('importType');
                 const autoSync = formData.get('autoSync') === 'on';
+                const mergeData = formData.get('mergeData') === 'on';
 
                 if (!sheetUrl.includes('docs.google.com/spreadsheets')) {
                     this.showNotification('Invalid Google Sheets URL', 'error');
                     return;
                 }
 
-                this.showNotification('Connecting to Google Sheets...', 'warning');
+                this.showNotification('🔄 Connecting and syncing ALL sheets from Google Sheets...', 'warning');
 
                 try {
-                    const data = await this.fetchGoogleSheetData(sheetUrl);
+                    // Extract spreadsheet ID from URL
+                    const spreadsheetId = this.extractSpreadsheetId(sheetUrl);
+                    if (!spreadsheetId) {
+                        throw new Error('Could not extract spreadsheet ID from URL');
+                    }
+
+                    // Fetch all sheets from the workbook
+                    const allSheetsData = await this.fetchAllGoogleSheets(spreadsheetId);
                     
+                    if (allSheetsData.length === 0) {
+                        throw new Error('No sheets found in the workbook');
+                    }
+
                     // Save configuration
                     this.data.googleSheetConfig = {
                         url: sheetUrl,
-                        importType: importType,
+                        spreadsheetId: spreadsheetId,
                         autoSync: autoSync,
-                        lastSync: new Date().toISOString()
+                        mergeData: mergeData,
+                        lastSync: new Date().toISOString(),
+                        sheetsFound: allSheetsData.map(s => s.sheetName),
+                        syncLog: []
                     };
 
-                    await this.saveData();
+                    // Clear existing data if not merging
+                    if (!mergeData) {
+                        this.data.customers = [];
+                        this.data.transactions = [];
+                        this.showNotification('Cleared existing data for fresh import', 'warning');
+                    }
+
+                    // Process all sheets
+                    await this.processAllSheets(allSheetsData);
                     
-                    // Process the data
-                    await this.processGoogleSheetData(data, importType);
+                    await this.saveData();
                     
                     // Update UI
                     this.updateGoogleSheetStatus();
+                    this.updateDashboard();
                     
                     if (autoSync) {
                         this.startGoogleSheetSync();
                     }
 
-                    this.showNotification('Successfully connected to Google Sheets!', 'success');
+                    this.showNotification(`✅ Successfully synced ${allSheetsData.length} sheets!`, 'success');
+                    
+                    // Show detailed sync results
+                    this.showSyncResults(allSheetsData);
                 } catch (error) {
-                    this.showNotification('Error: ' + error.message, 'error');
+                    this.showNotification('❌ Error: ' + error.message, 'error');
+                    console.error('Google Sheets sync error:', error);
                 }
             }
 
-            async fetchGoogleSheetData(url) {
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) {
-                        throw new Error('Failed to fetch Google Sheet. Make sure it is published to web as CSV.');
-                    }
-                    const csvText = await response.text();
-                    return this.parseCSV(csvText);
-                } catch (error) {
-                    throw new Error('Cannot access Google Sheet: ' + error.message);
+            extractSpreadsheetId(url) {
+                // Extract ID from various Google Sheets URL formats
+                const patterns = [
+                    /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/,
+                    /\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/
+                ];
+                
+                for (let pattern of patterns) {
+                    const match = url.match(pattern);
+                    if (match) return match[1];
                 }
+                return null;
+            }
+
+            async fetchAllGoogleSheets(spreadsheetId) {
+                try {
+                    // Construct the URL to fetch as HTML to get all sheets
+                    const baseUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:html`;
+                    
+                    this.showNotification('📡 Fetching workbook structure...', 'warning');
+                    
+                    // First, try to get the published HTML version
+                    const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${spreadsheetId}/pubhtml`;
+                    const response = await fetch(htmlUrl);
+                    
+                    if (!response.ok) {
+                        throw new Error('Cannot access sheet. Make sure it is published to web as "Web page" format.');
+                    }
+                    
+                    const htmlText = await response.text();
+                    
+                    // Parse sheet names from HTML
+                    const sheetNames = this.extractSheetNamesFromHTML(htmlText);
+                    
+                    if (sheetNames.length === 0) {
+                        throw new Error('No sheets found. Make sure the entire document is published.');
+                    }
+
+                    this.showNotification(`📋 Found ${sheetNames.length} sheets, importing data...`, 'warning');
+                    
+                    // Fetch data from each sheet
+                    const allSheetsData = [];
+                    for (let sheetName of sheetNames) {
+                        try {
+                            // Construct CSV export URL for each sheet
+                            const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+                            const csvResponse = await fetch(csvUrl);
+                            
+                            if (csvResponse.ok) {
+                                const csvText = await csvResponse.text();
+                                const data = this.parseCSV(csvText);
+                                
+                                if (data.length > 0) {
+                                    allSheetsData.push({
+                                        sheetName: sheetName,
+                                        data: data,
+                                        rowCount: data.length
+                                    });
+                                    this.showNotification(`✓ Imported: ${sheetName} (${data.length} rows)`, 'success');
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`Error fetching sheet ${sheetName}:`, error);
+                            this.addToSyncLog(`❌ Failed to import sheet: ${sheetName}`);
+                        }
+                    }
+                    
+                    return allSheetsData;
+                } catch (error) {
+                    throw new Error('Failed to fetch sheets: ' + error.message);
+                }
+            }
+
+            extractSheetNamesFromHTML(html) {
+                const sheetNames = [];
+                
+                // Try multiple patterns to extract sheet names
+                const patterns = [
+                    /<li[^>]*id="sheet-button-[^"]*"[^>]*>([^<]+)<\/li>/gi,
+                    /<a[^>]*class="[^"]*sheet-tab[^"]*"[^>]*>([^<]+)<\/a>/gi,
+                    /data-sheet-name="([^"]+)"/gi,
+                    /<option[^>]*>([^<]+)<\/option>/gi
+                ];
+                
+                for (let pattern of patterns) {
+                    let match;
+                    while ((match = pattern.exec(html)) !== null) {
+                        const name = match[1].trim();
+                        if (name && !sheetNames.includes(name)) {
+                            sheetNames.push(name);
+                        }
+                    }
+                }
+
+                // If no sheets found, try parsing the published page differently
+                if (sheetNames.length === 0) {
+                    // Look for sheet titles in the HTML structure
+                    const titlePattern = /<h2[^>]*>([^<]+)<\/h2>/gi;
+                    let match;
+                    while ((match = titlePattern.exec(html)) !== null) {
+                        const name = match[1].trim();
+                        if (name && !sheetNames.includes(name) && name !== 'Loading...') {
+                            sheetNames.push(name);
+                        }
+                    }
+                }
+
+                return sheetNames;
+            }
+
+            async processAllSheets(allSheetsData) {
+                let totalCustomers = 0;
+                let totalTransactions = 0;
+                const syncLog = [];
+
+                for (let sheetInfo of allSheetsData) {
+                    const { sheetName, data, rowCount } = sheetInfo;
+                    
+                    // Determine sheet type based on name and content
+                    const sheetType = this.identifySheetType(sheetName, data);
+                    
+                    syncLog.push(`📄 Processing: ${sheetName} (${sheetType})`);
+                    
+                    if (sheetType === 'balance-sheet') {
+                        const imported = this.importBalanceSheet(data);
+                        totalCustomers += imported;
+                        syncLog.push(`  ✓ Imported ${imported} customers from balance sheet`);
+                    } else if (sheetType === 'customer-ledger') {
+                        const { customer, transactions } = this.importCustomerLedger(sheetName, data);
+                        if (customer) {
+                            totalCustomers++;
+                            totalTransactions += transactions;
+                            syncLog.push(`  ✓ ${sheetName}: ${transactions} transactions`);
+                        }
+                    } else {
+                        // Try to import as transactions
+                        const imported = await this.importTransactionsFromSheet(data);
+                        totalTransactions += imported;
+                        if (imported > 0) {
+                            syncLog.push(`  ✓ Imported ${imported} transactions`);
+                        }
+                    }
+                }
+
+                this.data.googleSheetConfig.syncLog = syncLog;
+                this.addToSyncLog(`\n🎉 Sync Complete: ${totalCustomers} customers, ${totalTransactions} transactions`);
+            }
+
+            identifySheetType(sheetName, data) {
+                const lowerName = sheetName.toLowerCase();
+                
+                // Check for balance sheet indicators
+                if (lowerName.includes('balance') || lowerName.includes('summary') || 
+                    lowerName.includes('customer list') || lowerName === 'customers') {
+                    return 'balance-sheet';
+                }
+                
+                // Check column headers to determine type
+                if (data.length > 0) {
+                    const headers = Object.keys(data[0]).map(h => h.toLowerCase());
+                    
+                    // Balance sheet usually has customer names and balances
+                    if (headers.some(h => h.includes('customer') || h.includes('name') || h.includes('party')) &&
+                        headers.some(h => h.includes('balance') || h.includes('amount'))) {
+                        return 'balance-sheet';
+                    }
+                    
+                    // Customer ledger has dates and transaction details
+                    if (headers.some(h => h.includes('date')) && 
+                        (headers.some(h => h.includes('debit')) || headers.some(h => h.includes('credit')))) {
+                        return 'customer-ledger';
+                    }
+                }
+                
+                // Default to customer ledger (assume sheet name is customer name)
+                return 'customer-ledger';
+            }
+
+            importCustomerLedger(customerName, data) {
+                // Clean customer name
+                const cleanName = customerName.replace(/_/g, ' ').trim();
+                
+                // Find or create customer
+                let customer = this.data.customers.find(c => c.name === cleanName);
+                if (!customer) {
+                    customer = {
+                        name: cleanName,
+                        balance: 0,
+                        transactionCount: 0,
+                        created: new Date().toISOString()
+                    };
+                    this.data.customers.push(customer);
+                }
+
+                let transactionCount = 0;
+                let runningBalance = 0;
+
+                data.forEach(row => {
+                    const getCol = (names) => {
+                        for (let name of names) {
+                            const key = Object.keys(row).find(k => 
+                                k.toLowerCase().trim() === name.toLowerCase()
+                            );
+                            if (key && row[key]) return row[key];
+                        }
+                        return '';
+                    };
+
+                    const date = getCol(['Date', 'Transaction Date', 'Dated']);
+                    const description = getCol(['Description', 'Particulars', 'Details', 'Narration']);
+                    const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'DR', 'Dr Amount', 'Debit Amount'])) || 0;
+                    const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'CR', 'Cr Amount', 'Credit Amount'])) || 0;
+
+                    if (!date || (debit === 0 && credit === 0)) return;
+
+                    // Check if transaction already exists (avoid duplicates)
+                    const exists = this.data.transactions.some(t => 
+                        t.customer === cleanName && 
+                        t.date === date && 
+                        t.description === description &&
+                        t.debit === debit &&
+                        t.credit === credit
+                    );
+
+                    if (!exists) {
+                        const transaction = {
+                            sn: this.data.transactions.length + 1,
+                            date: date,
+                            customer: cleanName,
+                            description: description || 'Transaction',
+                            item: getCol(['Item', 'Product', 'Goods']),
+                            weightQty: parseFloat(getCol(['Weight/Qty', 'Quantity', 'Weight', 'Qty'])) || 0,
+                            rate: parseFloat(getCol(['Rate', 'Rate (PKR)', 'Price', 'Unit Price'])) || 0,
+                            transactionType: getCol(['Transaction Type', 'Type', 'Trans Type']),
+                            paymentMethod: getCol(['Payment Method', 'Method', 'Mode']),
+                            bankName: getCol(['Bank Name', 'Bank']),
+                            chequeNo: getCol(['Cheque No', 'Cheque No.', 'Check No', 'Cheque Number']),
+                            debit: debit,
+                            credit: credit,
+                            drCr: getCol(['DR/CR', 'DRCR', 'Type']) || (debit > 0 ? 'DR' : 'CR'),
+                            timestamp: new Date().toISOString()
+                        };
+
+                        this.data.transactions.push(transaction);
+                        runningBalance += debit - credit;
+                        transactionCount++;
+                    }
+                });
+
+                // Update customer balance
+                customer.balance = runningBalance;
+                customer.transactionCount = transactionCount;
+
+                return { customer: cleanName, transactions: transactionCount };
+            }
+
+            async importTransactionsFromSheet(data) {
+                let importedCount = 0;
+
+                data.forEach(row => {
+                    const getCol = (names) => {
+                        for (let name of names) {
+                            const key = Object.keys(row).find(k => 
+                                k.toLowerCase().trim() === name.toLowerCase()
+                            );
+                            if (key && row[key]) return row[key];
+                        }
+                        return '';
+                    };
+
+                    const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account', 'Customer Name']);
+                    const date = getCol(['Date', 'Transaction Date', 'Dated']);
+                    const debit = parseFloat(getCol(['Debit', 'Debit (PKR)', 'DR'])) || 0;
+                    const credit = parseFloat(getCol(['Credit', 'Credit (PKR)', 'CR'])) || 0;
+
+                    if (!customerName || !date || (debit === 0 && credit === 0)) return;
+
+                    // Add customer if doesn't exist
+                    if (!this.data.customers.find(c => c.name === customerName)) {
+                        this.data.customers.push({
+                            name: customerName,
+                            balance: 0,
+                            transactionCount: 0,
+                            created: new Date().toISOString()
+                        });
+                    }
+
+                    const transaction = {
+                        sn: this.data.transactions.length + 1,
+                        date: date,
+                        customer: customerName,
+                        description: getCol(['Description', 'Particulars', 'Details']) || 'Imported Transaction',
+                        item: getCol(['Item', 'Product']),
+                        weightQty: parseFloat(getCol(['Weight/Qty', 'Quantity', 'Weight'])) || 0,
+                        rate: parseFloat(getCol(['Rate', 'Rate (PKR)', 'Price'])) || 0,
+                        transactionType: getCol(['Transaction Type', 'Type']),
+                        paymentMethod: getCol(['Payment Method', 'Method']),
+                        bankName: getCol(['Bank Name', 'Bank']),
+                        chequeNo: getCol(['Cheque No', 'Cheque No.']),
+                        debit: debit,
+                        credit: credit,
+                        drCr: getCol(['DR/CR', 'DRCR']) || (debit > 0 ? 'DR' : 'CR'),
+                        timestamp: new Date().toISOString()
+                    };
+
+                    this.data.transactions.push(transaction);
+                    
+                    const customer = this.data.customers.find(c => c.name === customerName);
+                    if (customer) {
+                        customer.balance += debit - credit;
+                    }
+
+                    importedCount++;
+                });
+
+                return importedCount;
+            }
+
+            showSyncResults(allSheetsData) {
+                let html = '<div style="background: var(--bg-light); padding: 1rem; border-radius: 8px; margin-top: 1rem;">';
+                html += '<h4 style="margin-bottom: 0.5rem;">📊 Sync Results:</h4><ul style="list-style: none; padding: 0;">';
+                
+                allSheetsData.forEach(sheet => {
+                    html += `<li style="padding: 0.5rem; margin: 0.25rem 0; background: white; border-radius: 4px;">
+                        ✓ <strong>${sheet.sheetName}</strong>: ${sheet.rowCount} rows imported
+                    </li>`;
+                });
+                
+                html += '</ul></div>';
+                
+                const container = document.getElementById('sheetsDiscovered');
+                container.innerHTML = html;
+            }
+
+            addToSyncLog(message) {
+                if (!this.data.googleSheetConfig.syncLog) {
+                    this.data.googleSheetConfig.syncLog = [];
+                }
+                const timestamp = new Date().toLocaleString();
+                this.data.googleSheetConfig.syncLog.push(`[${timestamp}] ${message}`);
             }
 
             parseCSV(csvText) {
                 const lines = csvText.trim().split('\n');
+                if (lines.length === 0) return [];
+                
                 const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
                 
                 return lines.slice(1).map(line => {
@@ -1554,53 +1934,6 @@
                     });
                     return row;
                 }).filter(row => Object.values(row).some(value => value !== ''));
-            }
-
-            async processGoogleSheetData(data, importType) {
-                if (importType === 'transactions') {
-                    await this.confirmImport(data);
-                } else if (importType === 'customers') {
-                    this.importCustomersOnly(data);
-                } else if (importType === 'balance-sheet') {
-                    this.importBalanceSheet(data);
-                }
-            }
-
-            importCustomersOnly(data) {
-                let importedCount = 0;
-                
-                data.forEach(row => {
-                    const getCol = (names) => {
-                        for (let name of names) {
-                            const key = Object.keys(row).find(k => 
-                                k.toLowerCase().trim() === name.toLowerCase()
-                            );
-                            if (key && row[key]) return row[key];
-                        }
-                        return '';
-                    };
-
-                    const customerName = getCol(['Customer', 'Name', 'Party Name', 'Account', 'Customer Name']);
-                    const balance = parseFloat(getCol(['Balance', 'Opening Balance', 'Amount'])) || 0;
-                    const drCr = getCol(['DR/CR', 'DRCR', 'Type']) || (balance >= 0 ? 'DR' : 'CR');
-
-                    if (!customerName) return;
-
-                    // Check if customer already exists
-                    if (!this.data.customers.find(c => c.name === customerName)) {
-                        this.data.customers.push({
-                            name: customerName,
-                            balance: drCr === 'CR' ? -Math.abs(balance) : Math.abs(balance),
-                            transactionCount: 0,
-                            created: new Date().toISOString()
-                        });
-                        importedCount++;
-                    }
-                });
-
-                this.saveData();
-                this.updateDashboard();
-                this.showNotification(`Imported ${importedCount} customers from Google Sheets`, 'success');
             }
 
             importBalanceSheet(data) {
@@ -1662,16 +1995,26 @@
 
                 try {
                     this.updateSyncStatus('Syncing...');
-                    const data = await this.fetchGoogleSheetData(this.data.googleSheetConfig.url);
-                    await this.processGoogleSheetData(data, this.data.googleSheetConfig.importType);
+                    
+                    const spreadsheetId = this.data.googleSheetConfig.spreadsheetId;
+                    const allSheetsData = await this.fetchAllGoogleSheets(spreadsheetId);
+                    
+                    // Process all sheets
+                    await this.processAllSheets(allSheetsData);
                     
                     this.data.googleSheetConfig.lastSync = new Date().toISOString();
+                    this.data.googleSheetConfig.sheetsFound = allSheetsData.map(s => s.sheetName);
+                    
                     await this.saveData();
                     this.updateGoogleSheetStatus();
+                    this.updateDashboard();
                     this.updateSyncStatus('Synced');
+                    
+                    this.showNotification('✅ Auto-sync completed successfully', 'success');
                 } catch (error) {
                     console.error('Auto-sync error:', error);
                     this.updateSyncStatus('Sync Failed');
+                    this.showNotification('Auto-sync failed: ' + error.message, 'error');
                 }
             }
 
@@ -1691,15 +2034,26 @@
                 if (this.data.googleSheetConfig) {
                     container.style.display = 'block';
                     const lastSync = new Date(this.data.googleSheetConfig.lastSync);
+                    const sheetsCount = this.data.googleSheetConfig.sheetsFound ? this.data.googleSheetConfig.sheetsFound.length : 0;
+                    
                     details.innerHTML = `
                         <div style="display: grid; gap: 0.5rem;">
-                            <div><strong>Status:</strong> <span style="color: var(--success);">✓ Connected</span></div>
-                            <div><strong>Import Type:</strong> ${this.data.googleSheetConfig.importType}</div>
-                            <div><strong>Auto-Sync:</strong> ${this.data.googleSheetConfig.autoSync ? 'Enabled (every 5 min)' : 'Disabled'}</div>
+                            <div><strong>Status:</strong> <span style="color: var(--success);">✓ Connected & Synced</span></div>
+                            <div><strong>Sheets Imported:</strong> ${sheetsCount} sheets</div>
+                            <div><strong>Auto-Sync:</strong> ${this.data.googleSheetConfig.autoSync ? '🔄 Enabled (every 5 min)' : '⏸ Disabled'}</div>
                             <div><strong>Last Sync:</strong> ${lastSync.toLocaleString()}</div>
-                            <div style="word-break: break-all;"><strong>Sheet URL:</strong> ${this.data.googleSheetConfig.url.substring(0, 60)}...</div>
+                            <div><strong>Customers:</strong> ${this.data.customers.length}</div>
+                            <div><strong>Transactions:</strong> ${this.data.transactions.length}</div>
                         </div>
                     `;
+                    
+                    // Show sheets list
+                    if (this.data.googleSheetConfig.sheetsFound) {
+                        this.showSyncResults(this.data.googleSheetConfig.sheetsFound.map(name => ({
+                            sheetName: name,
+                            rowCount: this.data.transactions.filter(t => t.customer === name).length || 'N/A'
+                        })));
+                    }
                 } else {
                     container.style.display = 'none';
                 }
@@ -1825,15 +2179,36 @@
                 return;
             }
 
-            app.showNotification('Testing connection...', 'warning');
+            app.showNotification('🧪 Testing connection to Google Sheets...', 'warning');
 
             try {
-                const response = await fetch(sheetUrl);
-                if (!response.ok) {
-                    throw new Error('Cannot access the sheet');
+                const spreadsheetId = app.extractSpreadsheetId(sheetUrl);
+                if (!spreadsheetId) {
+                    throw new Error('Could not extract spreadsheet ID from URL');
                 }
-                const text = await response.text();
-                const lines = text.split('\n');
+
+                // Try to fetch the published HTML page
+                const htmlUrl = `https://docs.google.com/spreadsheets/d/e/${spreadsheetId}/pubhtml`;
+                const response = await fetch(htmlUrl);
+                
+                if (!response.ok) {
+                    throw new Error('Cannot access the sheet. Make sure it is published to web as "Web page" format.');
+                }
+                
+                const htmlText = await response.text();
+                const sheetNames = app.extractSheetNamesFromHTML(htmlText);
+                
+                if (sheetNames.length === 0) {
+                    // Try alternative method
+                    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv`;
+                    const csvResponse = await fetch(csvUrl);
+                    
+                    if (csvResponse.ok) {
+                        sheetNames.push('Sheet1 (detected)');
+                    } else {
+                        throw new Error('No sheets found');
+                    }
+                }
                 
                 app.showModal(`
                     <div class="modal-header">
@@ -1841,13 +2216,17 @@
                         <button class="close-btn" onclick="app.closeModal()">×</button>
                     </div>
                     <div>
-                        <p style="margin-bottom: 1rem;"><strong>Sheet is accessible and ready to import.</strong></p>
+                        <p style="margin-bottom: 1rem;"><strong>Google Sheets workbook is accessible!</strong></p>
                         <div style="background: var(--bg-light); padding: 1rem; border-radius: 8px;">
-                            <p><strong>Found:</strong> ${lines.length - 1} rows</p>
-                            <p><strong>First row (headers):</strong></p>
-                            <pre style="overflow-x: auto; padding: 0.5rem; background: white; border-radius: 4px; margin-top: 0.5rem;">${lines[0]}</pre>
+                            <p><strong>📊 Found ${sheetNames.length} sheet(s):</strong></p>
+                            <ul style="margin-top: 0.5rem; padding-left: 1.5rem; max-height: 200px; overflow-y: auto;">
+                                ${sheetNames.map(name => `<li>${name}</li>`).join('')}
+                            </ul>
                         </div>
-                        <p style="margin-top: 1rem; color: var(--success);">You can now proceed with the import!</p>
+                        <div style="background: #d1f2eb; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid var(--success);">
+                            <strong>✓ Ready to import!</strong>
+                            <p style="margin-top: 0.5rem;">Each sheet will be imported as a customer ledger with all transactions.</p>
+                        </div>
                     </div>
                 `);
             } catch (error) {
@@ -1860,12 +2239,25 @@
                         <p style="color: var(--danger); margin-bottom: 1rem;"><strong>Cannot connect to Google Sheet</strong></p>
                         <p style="margin-bottom: 1rem;">Error: ${error.message}</p>
                         <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; border-left: 4px solid var(--warning);">
-                            <strong>Make sure:</strong>
+                            <strong>⚠️ Make sure you follow these steps EXACTLY:</strong>
+                            <ol style="margin-top: 0.5rem; padding-left: 1.5rem; line-height: 2;">
+                                <li>Open your Google Sheets workbook</li>
+                                <li>Click <strong>File → Share → Publish to web</strong></li>
+                                <li>In the "Link" tab, select <strong>"Entire Document"</strong></li>
+                                <li>Choose <strong>"Web page"</strong> format (NOT CSV)</li>
+                                <li>Check "Automatically republish when changes are made"</li>
+                                <li>Click <strong>Publish</strong></li>
+                                <li>Copy the link that appears</li>
+                                <li>The link should start with: https://docs.google.com/spreadsheets/d/e/2PACX-...</li>
+                            </ol>
+                        </div>
+                        <div style="background: #e3f2fd; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid var(--primary);">
+                            <strong>💡 Common Issues:</strong>
                             <ul style="margin-top: 0.5rem; padding-left: 1.5rem;">
-                                <li>The sheet is published to web (File → Share → Publish to web)</li>
-                                <li>You selected CSV format when publishing</li>
-                                <li>The link you copied is the published CSV link</li>
-                                <li>The sheet is not private or restricted</li>
+                                <li>Using sharing link instead of publish link ❌</li>
+                                <li>Publishing individual sheet instead of entire document ❌</li>
+                                <li>Using CSV format instead of Web page format ❌</li>
+                                <li>Sheet is private/not published ❌</li>
                             </ul>
                         </div>
                     </div>
@@ -1874,8 +2266,27 @@
         }
 
         async function manualSync() {
-            app.showNotification('Syncing with Google Sheets...', 'warning');
+            app.showNotification('🔄 Starting manual sync from Google Sheets...', 'warning');
             await app.syncWithGoogleSheet();
+        }
+
+        function viewSyncLog() {
+            if (!app.data.googleSheetConfig || !app.data.googleSheetConfig.syncLog) {
+                app.showNotification('No sync log available', 'warning');
+                return;
+            }
+
+            const log = app.data.googleSheetConfig.syncLog.join('<br>');
+            
+            app.showModal(`
+                <div class="modal-header">
+                    <h3>📋 Sync Log</h3>
+                    <button class="close-btn" onclick="app.closeModal()">×</button>
+                </div>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <pre style="background: var(--bg-light); padding: 1rem; border-radius: 8px; white-space: pre-wrap; word-wrap: break-word; font-size: 0.875rem; line-height: 1.6;">${log}</pre>
+                </div>
+            `);
         }
 
         function disconnectGoogleSheets() {
